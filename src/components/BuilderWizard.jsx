@@ -68,4 +68,87 @@ export default function BuilderWizard(){
           </ul>
         </div>
 
-        <div class
+        <div className="card">
+          <div className="font-medium mb-2">3) Add Subjects to Grades</div>
+          <div className="flex flex-col gap-2">
+            <select className="input" id="gradeSel">
+              {s.builder.grades.map(g=> <option key={g.id} value={g.id}>{g.label}</option>)}
+            </select>
+            <select className="input" id="subSel">
+              {addSubjectChoices.map(o=> <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button className="btn" onClick={()=>{
+              const gid=document.getElementById('gradeSel').value; const sid=document.getElementById('subSel').value;
+              if (!gid || !sid) return; s.addSubjectToGrade(gid, sid);
+            }}>Add Subject</button>
+          </div>
+          <div className="mt-2 text-sm">
+            {s.builder.grades.map(g=>(
+              <div key={g.id}><b>{g.label}</b>: {(s.builder.gradeSubjects[g.id]||[]).map(sid=> (s.subjects.find(x=>x.id===sid)?.name || sid)).join(', ') || '—'}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="font-medium mb-2">4) Add Periods to Subjects (per Grade)</div>
+          <div className="flex flex-col gap-2">
+            <select className="input" id="gradeSelP">
+              {s.builder.grades.map(g=> <option key={g.id} value={g.id}>{g.label}</option>)}
+            </select>
+            <select className="input" id="subSelP">
+              {(s.builder.gradeSubjects[document.getElementById('gradeSelP')?.value]||s.builder.grades[0]&&s.builder.gradeSubjects[s.builder.grades[0].id]||[]).map(sid=>(
+                <option key={sid} value={sid}>{s.subjects.find(x=>x.id===sid)?.name||sid}</option>
+              ))}
+            </select>
+            <input className="input" type="number" placeholder="Periods" id="perInput"/>
+            <button className="btn" onClick={()=>{
+              const gid=document.getElementById('gradeSelP').value; const sid=document.getElementById('subSelP').value;
+              const p=Number(document.getElementById('perInput').value||''); if(!gid||!sid||!Number.isFinite(p)) return;
+              s.setGradeSubjectPeriods(gid, sid, p); document.getElementById('perInput').value='';
+            }}>Set Periods</button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="font-medium mb-2">5) Add Modes to Grade</div>
+          <div className="flex flex-col gap-2">
+            <select className="input" id="gradeSelM">
+              {s.builder.grades.map(g=> <option key={g.id} value={g.id}>{g.label}</option>)}
+            </select>
+            <input className="input" placeholder="Comma-separated modes e.g. Live, Flipped AM" id="modesInput"/>
+            <button className="btn" onClick={()=>{
+              const gid=document.getElementById('gradeSelM').value;
+              const list=(document.getElementById('modesInput').value||'').split(',').map(x=>x.trim()).filter(Boolean);
+              if(!gid||!list.length) return; s.setGradeModes(gid, list); document.getElementById('modesInput').value='';
+            }}>Set Modes</button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="font-medium mb-2">6) Add Learners to Modes</div>
+          <div className="flex flex-col gap-2">
+            <select className="input" id="gradeSelL">
+              {s.builder.grades.map(g=> <option key={g.id} value={g.id}>{g.label}</option>)}
+            </select>
+            <input className="input" placeholder="Mode name (must match step 5)" id="modeName"/>
+            <input className="input" type="number" placeholder="Learners count" id="modeLearners"/>
+            <button className="btn" onClick={()=>{
+              const gid=document.getElementById('gradeSelL').value;
+              const mode=document.getElementById('modeName').value.trim();
+              const n=Number(document.getElementById('modeLearners').value||'');
+              if(!gid||!mode||!Number.isFinite(n)) return;
+              s.setModeLearners(gid, mode, n);
+              document.getElementById('modeName').value=''; document.getElementById('modeLearners').value='';
+            }}>Set Learners</button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="font-medium mb-2">7) Generate Classes</div>
+          <div className="text-sm text-gray-600 mb-2">Creates classes for each Grade×Mode with the chosen subjects & learners. You can then allocate teachers in the Matrix.</div>
+          <button className="btn" onClick={build}>Generate Classes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
