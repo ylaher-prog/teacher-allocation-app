@@ -23,28 +23,31 @@ export const useAppStore = create((set, get) => {
   const savedTheme   = load(KEY_THEME,   'navy');
   const savedSheets  = load(KEY_SHEETS,  null);
   const savedPeriods = load(KEY_PERIODS, {});
-  const savedSect    = load(KEY_SECT,    {});   // per-section colors
-  const savedBuilder = load(KEY_BUILDER, null); // builder model
+  const savedSect    = load(KEY_SECT,    {});
+  const savedBuilder = load(KEY_BUILDER, null);
 
   return {
-    // core data
+    // -------- core data
     teachers: sample.teachers,
-    subjects: sample.subjects,           // catalog
+    subjects: sample.subjects,
     classes:  sample.classes,
     globals:  sample.globals,
 
-    // allocation & periods
+    // -------- allocation & periods
     allocation: savedAlloc ?? sample.initialAllocation,
     periodsMap: savedPeriods || {},
 
-    // ui state
-    activeTab: 'dashboard', // 'dashboard' | 'matrix' | 'perclass' | 'builder' | 'settings'
+    // -------- UI state
+    activeTab: 'dashboard',
     filters: { curriculum:'All', grade:'All', mode:'All' },
     activeClassId: sample.classes[0]?.id || '',
     theme: savedTheme,
 
-    // section themes (per block)
-    sectionThemes: savedSect, // { [section]: { primary, accent, warn, text, surface, muted } }
+    // -------- share / permissions
+    readOnly: false, // toggled by ?readonly=true or via applyQueryParams
+
+    // -------- section themes
+    sectionThemes: savedSect,
     setSectionTheme(section, patch){
       set((s)=>{
         const next = { ...(s.sectionThemes||{}) , [section]: { ...(s.sectionThemes?.[section]||{}), ...patch } };
@@ -54,13 +57,12 @@ export const useAppStore = create((set, get) => {
     },
     getSectionStyle(section){
       const cfg = get().sectionThemes?.[section] || {};
-      // Return inline CSS vars to apply to a section wrapper
       const style = {};
       Object.entries(cfg).forEach(([k,v])=>{ style[`--${k}`]=v; });
       return style;
     },
 
-    // sheet config
+    // -------- sheet config
     sheetConfig: savedSheets || DEFAULT_SHEET_CONFIG,
     setSheetConfig(part){
       set((s)=>{
@@ -71,18 +73,18 @@ export const useAppStore = create((set, get) => {
       });
     },
 
-    // scenarios
+    // -------- scenarios
     scenarios: savedScen,
     saveScenario(name){ if(!name?.trim())return; const scen={...get().scenarios,[name]:get().allocation}; save(KEY_SCEN,scen); set({scenarios:scen}); },
     loadScenario(name){ const scen=get().scenarios?.[name]; if(!scen)return; save(KEY_ALLOC,scen); set({allocation:scen}); },
     deleteScenario(name){ const s={...get().scenarios}; delete s[name]; save(KEY_SCEN,s); set({scenarios:s}); },
 
-    // navigation & filters
+    // -------- navigation & filters
     setActiveTab(tab){ set({activeTab:tab}); },
     setFilters(part){ set((s)=>({filters:{...s.filters, ...part}})); },
     setActiveClass(id){ set({activeClassId:id}); },
 
-    // allocation updates
+    // -------- allocation updates (auto-disabled in readOnly via UI)
     setAllocation(classId, subjectId, teacherId){
       set((s)=>{
         const next={...s.allocation};
@@ -94,7 +96,7 @@ export const useAppStore = create((set, get) => {
     },
     resetAllocation(){ save(KEY_ALLOC, sample.initialAllocation); set({allocation: sample.initialAllocation}); },
 
-    // periods updates (per class/subject)
+    // -------- periods updates (auto-disabled in readOnly via UI)
     setPeriods(classId, subjectId, value){
       set((s)=>{
         const next={...s.periodsMap};
@@ -111,7 +113,7 @@ export const useAppStore = create((set, get) => {
       return p;
     },
 
-    // replace all (Sheets/CSV import)
+    // -------- replace all (Sheets/CSV import)
     replaceAllData({ teachers, subjects, classes, globals, allocation, periodsMap,
       curricula, grades, gradeSubjects, gradePeriods, gradeModes, modeLearners }){
       const nextTeachers = teachers ?? get().teachers ?? sample.teachers;
@@ -129,7 +131,6 @@ export const useAppStore = create((set, get) => {
         allocation: nextAlloc, periodsMap: nextPeriods, activeClassId: nextActive,
       });
 
-      // builder if provided
       if (curricula || grades || gradeSubjects || gradePeriods || gradeModes || modeLearners) {
         const builder = {
           curricula: curricula || [],
@@ -144,40 +145,60 @@ export const useAppStore = create((set, get) => {
       }
     },
 
-    // ---------- Builder model ----------
+    // -------- Builder model & actions (unchanged from your enhanced build)
     builder: savedBuilder || {
-      curricula: [],         // [{id,name}]
-      grades: [],            // [{id,curriculumId,grade,label}]
-      gradeSubjects: {},     // {gradeId:[subjectId]}
-      gradePeriods: {},      // {gradeId:{subjectId:periods}}
-      gradeModes: {},        // {gradeId:[mode]}
-      modeLearners: {}       // {gradeId:{mode:learners}}
+      curricula: [], grades: [], gradeSubjects: {}, gradePeriods: {}, gradeModes: {}, modeLearners: {}
+    },
+    addCurriculum(name){ const id='cur_'+rnd(); set(s=>{const b={...s.builder, curricula:[...s.builder.curricula,{id,name}]}; save(KEY_BUILDER,b); return {builder:b};}); },
+    addGrade(curriculumId, grade, label){ const id='g_'+rnd(); set(s=>{const b={...s.builder, grades:[...s.builder.grades,{id,curriculumId,grade,label:label||grade}]}; save(KEY_BUILDER,b); return {builder:b};}); },
+    addSubjectToGrade(gradeId, subjectId){ set(s=>{const gs={...s.builder.gradeSubjects}; gs[gradeId]=gs[gradeId]?[...new Set([...gs[gradeId],subjectId])]:[subjectId]; const b={...s.builder,gradeSubjects:gs}; save(KEY_BUILDER,b); return {builder:b};}); },
+    setGradeSubjectPeriods(gradeId, subjectId, periods){ set(s=>{const gp={...s.builder.gradePeriods}; gp[gradeId]=gp[gradeId]?{...gp[gradeId]}:{}; gp[gradeId][subjectId]=Number(periods); const b={...s.builder,gradePeriods:gp}; save(KEY_BUILDER,b); return {builder:b};}); },
+    setGradeModes(gradeId, modes){ set(s=>{const gm={...s.builder.gradeModes,[gradeId]:modes}; const b={...s.builder,gradeModes:gm}; save(KEY_BUILDER,b); return {builder:b};}); },
+    setModeLearners(gradeId, mode, learners){ set(s=>{const ml={...s.builder.modeLearners}; ml[gradeId]=ml[gradeId]?{...ml[gradeId]}:{}; ml[gradeId][mode]=Number(learners); const b={...s.builder,modeLearners:ml}; save(KEY_BUILDER,b); return {builder:b};}); },
+    buildClassesFromBuilder(){
+      const { builder } = get();
+      const newClasses = [];
+      builder.grades.forEach(g=>{
+        const subjectIds = builder.gradeSubjects[g.id] || [];
+        const modes = builder.gradeModes[g.id] || ['Live'];
+        modes.forEach(m=>{
+          const learners = builder.modeLearners[g.id]?.[m] ?? 0;
+          const id = `cls_${g.id}_${slug(m)}`;
+          newClasses.push({ id, name:`${g.label} ${m}`, grade:g.grade, mode:m, curriculum: currName(builder, g.curriculumId), learners, maxLearners: Math.max(learners,36), subjectIds });
+        });
+      });
+      const periodsMap = {};
+      newClasses.forEach(cls=>{
+        const gid = newClasses.length ? cls.id.split('_')[1] : null;
+        const gp = builder.gradePeriods[gid];
+        if (gp) periodsMap[cls.id] = { ...gp };
+      });
+      const allocation = {};
+      save(KEY_PERIODS, periodsMap); save(KEY_ALLOC, allocation);
+      set({ classes:newClasses, allocation, periodsMap, activeClassId:newClasses[0]?.id || '' });
     },
 
-    // Builder actions
-    addCurriculum(name){
-      const id = 'cur_' + cryptoRandom();
-      set((s)=> {
-        const b={...s.builder, curricula:[...s.builder.curricula, {id,name}]};
-        save(KEY_BUILDER,b); return { builder:b };
+    // -------- Share helpers
+    setReadOnly(flag){ set({ readOnly: !!flag }); },
+    applyQueryParams(params){
+      // params: { sheet, tab, theme, curriculum, grade, mode, readonly }
+      if (params.theme) { save(KEY_THEME, params.theme); set({ theme: params.theme }); }
+      if (params.tab) { set({ activeTab: params.tab }); }
+      const f = {};
+      if (params.curriculum) f.curriculum = params.curriculum;
+      if (params.grade)      f.grade = isNaN(Number(params.grade)) ? params.grade : Number(params.grade);
+      if (params.mode)       f.mode = params.mode;
+      if (Object.keys(f).length) set(s=>({ filters: { ...s.filters, ...f }}));
+      if (params.sheet) set(s=>{
+        const merged = { ...s.sheetConfig, sheetUrl: params.sheet };
+        save(KEY_SHEETS, merged);
+        return { sheetConfig: merged };
       });
+      if (params.readonly === 'true') set({ readOnly: true });
     },
-    addGrade(curriculumId, grade, label){
-      const id = 'g_' + cryptoRandom();
-      set((s)=> {
-        const b={...s.builder, grades:[...s.builder.grades, {id,curriculumId,grade,label:label||grade}]};
-        save(KEY_BUILDER,b); return { builder:b };
-      });
-    },
-    addSubjectToGrade(gradeId, subjectId){
-      set((s)=>{
-        const gs={...s.builder.gradeSubjects};
-        gs[gradeId]=gs[gradeId]?[...new Set([...gs[gradeId], subjectId])]:[subjectId];
-        const b={...s.builder, gradeSubjects:gs}; save(KEY_BUILDER,b); return { builder:b };
-      });
-    },
-    setGradeSubjectPeriods(gradeId, subjectId, periods){
-      set((s)=>{
-        const gp={...s.builder.gradePeriods};
-        gp[gradeId]=gp[gradeId]?{...gp[gradeId]}:{};
-        gp[gradeId
+  };
+});
+
+function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
+function rnd(){ try{ return crypto.getRandomValues(new Uint32Array(1))[0].toString(36);}catch{ return Math.floor(Math.random()*1e9).toString(36);} }
+function currName(builder, id){ return builder.curricula.find(c=>c.id===id)?.name || ''; }
