@@ -1,6 +1,6 @@
 // src/utils/sheets.js
-// Read-only sync from a public Google Sheet by URL. No API key needed.
-// Make sure your Sheet is "Anyone with the link can view".
+// Read-only sync from a public Google Sheet by URL (no API key).
+// Make sure the Sheet is "Anyone with the link can view".
 
 function extractSheetIdFromUrl(url) {
   const m = String(url).match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -44,4 +44,58 @@ export async function pullFromSheetUrl(sheetUrl, sheetNames = {
     fetchCSV(buildCsvUrl(sid, sheetNames.subjects)),
     fetchCSV(buildCsvUrl(sid, sheetNames.classes)),
     fetchCSV(buildCsvUrl(sid, sheetNames.allocation)).catch(() => []),
-    fetchCSV(buildCsvUrl(sid, sheetNames
+    fetchCSV(buildCsvUrl(sid, sheetNames.periods)).catch(() => []),
+  ]);
+
+  const teachers = tRows.map((r) => ({
+    id: r.id, name: r.name,
+    maxPeriods: Number(r.maxPeriods || 0),
+    maxLearners: Number(r.maxLearners || 0),
+    modes: (r.modes || "").split(/;|\||,/).map(s=>s.trim()).filter(Boolean),
+    specialties: (r.specialties || "").split(/;|\||,/).map(s=>s.trim()).filter(Boolean),
+  }));
+
+  const subjects = sRows.map((r) => ({
+    id: r.id, name: r.name,
+    periods: Number(r.periods || 0),
+    requiredSpecialty: r.requiredSpecialty || "",
+  }));
+
+  const classes = cRows.map((r) => ({
+    id: r.id, name: r.name,
+    grade: r.grade ? Number(r.grade) : null,
+    mode: r.mode, curriculum: r.curriculum,
+    learners: Number(r.learners || 0),
+    maxLearners: Number(r.maxLearners || 0),
+    subjectIds: (r.subjectIds || "").split(/;|\||,/).map(s=>s.trim()).filter(Boolean),
+  }));
+
+  // Allocation rows: classId,subjectId,teacherId
+  const allocation = {};
+  aRows.forEach((r) => {
+    const c = r.classId, s = r.subjectId, t = r.teacherId || "";
+    if (!c || !s) return;
+    allocation[c] = allocation[c] || {};
+    allocation[c][s] = t;
+  });
+
+  // Periods rows (optional): classId,subjectId,periods
+  const periodsMap = {};
+  pRows.forEach((r) => {
+    const c = r.classId, s = r.subjectId, p = Number(r.periods || "");
+    if (!c || !s || !Number.isFinite(p)) return;
+    periodsMap[c] = periodsMap[c] || {};
+    periodsMap[c][s] = p;
+  });
+
+  return { teachers, subjects, classes, allocation, periodsMap };
+}
+
+// ---------- Compatibility shims (so old imports don't break) ----------
+
+// Old signature: pullFromSheets({ sheetId, sheetNames, sheetUrl })
+export async function pullFromSheets(args = {}) {
+  const { sheetId, sheetNames, sheetUrl } = args || {};
+  const url = sheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : '');
+  if (!url) throw new Error('pullFromSheets needs sheetId or sheetUrl');
+  return pullFromSheetUrl(u
