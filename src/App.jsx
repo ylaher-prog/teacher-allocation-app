@@ -1,9 +1,12 @@
-import React from 'react'
-export default function App(){
+import React from 'react';
+import TopNav from './components/TopNav.jsx';
+import Dashboard from './components/Dashboard.jsx';
+
+export default function App() {
   return (
-    <div style={{padding: 24}}>
-      <h1>Teacher Subject Allocation</h1>
-      <p>If you can see this, Vercel + Vite are building correctly.</p>
+    <div className="min-h-screen bg-gray-50">
+      <TopNav />
+      <Dashboard />
     </div>
-  )
+  );
 }
