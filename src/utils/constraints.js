@@ -1,17 +1,27 @@
+// src/utils/constraints.js
 export function evaluateConstraints(state){
-  const { teachers, classes, subjects, allocation, globals } = state;
+  const { teachers, classes, subjects, allocation, globals, periodsMap } = state;
   const warnings = [];
 
   const teacherById = Object.fromEntries(teachers.map(t=>[t.id, t]));
   const subjectById = Object.fromEntries(subjects.map(s=>[s.id, s]));
   const classById   = Object.fromEntries(classes.map(c=>[c.id, c]));
 
+  // Helper: get periods for class/subject (fallback to subject default)
+  const getP = (cid, sid) => {
+    const fromMap = periodsMap?.[cid]?.[sid];
+    if (fromMap === '' || fromMap === undefined || fromMap === null) {
+      return subjectById[sid]?.periods || 0;
+    }
+    const n = Number(fromMap);
+    return Number.isFinite(n) ? n : (subjectById[sid]?.periods || 0);
+  };
+
   // 1) Class capacity
   classes.forEach(cls=>{
     if (cls.learners > cls.maxLearners || cls.learners > globals.maxLearnersPerClass){
       warnings.push({
-        type: 'capacity',
-        level: 'error',
+        type: 'capacity', level: 'error',
         message: `${cls.name}: learners (${cls.learners}) exceed max (${Math.min(cls.maxLearners, globals.maxLearnersPerClass)})`
       });
     }
@@ -24,8 +34,9 @@ export function evaluateConstraints(state){
     Object.entries(alloc).forEach(([sid, tid])=>{
       const subj = subjectById[sid];
       if (!subj || !tid) return;
+      const P = getP(cls.id, sid);
       teacherLoads[tid] = teacherLoads[tid] || { periods:0, learners:0, classes:new Set() };
-      teacherLoads[tid].periods += (subj.periods || 0);
+      teacherLoads[tid].periods += P;
       if (!teacherLoads[tid].classes.has(cls.id)){
         teacherLoads[tid].learners += cls.learners;
         teacherLoads[tid].classes.add(cls.id);
@@ -33,21 +44,18 @@ export function evaluateConstraints(state){
     });
   });
 
-  // 2) Qualification & Mode compatibility
+  // 2) Qualification & Mode
   Object.entries(allocation).forEach(([classId, subMap])=>{
     const cls = classById[classId];
     Object.entries(subMap).forEach(([sid, tid])=>{
       const t = teacherById[tid];
       const s = subjectById[sid];
       if (!t || !s) return;
-
-      // qualification
-      if (s.requiredSpecialty && !(t.specialties || []).includes(s.requiredSpecialty)){
+      if (s.requiredSpecialty && !(t.specialties||[]).includes(s.requiredSpecialty)){
         warnings.push({ type:'qualification', level:'warn',
           message: `${t.name} is not specialized for ${s.name} (${s.requiredSpecialty}) in ${cls.name}` });
       }
-      // mode compatibility
-      const ok = (t.modes || []).some(m => cls.mode.startsWith(m) || m === cls.mode);
+      const ok = (t.modes||[]).some(m => cls.mode.startsWith(m) || m===cls.mode);
       if (!ok){
         warnings.push({ type:'mode', level:'warn',
           message: `${t.name} mode ${JSON.stringify(t.modes)} may not match class mode "${cls.mode}" in ${cls.name}` });
@@ -55,7 +63,7 @@ export function evaluateConstraints(state){
     });
   });
 
-  // 3) Teacher load caps
+  // 3) Teacher caps
   Object.entries(teacherLoads).forEach(([tid, load])=>{
     const t = teacherById[tid];
     if (!t) return;
@@ -72,7 +80,7 @@ export function evaluateConstraints(state){
   // 4) Unassigned subjects
   classes.forEach(cls=>{
     const alloc = allocation[cls.id] || {};
-    cls.subjectIds.forEach(sid=>{
+    (cls.subjectIds||[]).forEach(sid=>{
       if (!alloc[sid]){
         const s = subjectById[sid];
         warnings.push({ type:'unassigned', level:'warn', message: `${cls.name}: ${s?.name || sid} is unassigned` });
