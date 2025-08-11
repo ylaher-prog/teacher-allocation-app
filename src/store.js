@@ -1,69 +1,89 @@
-// src/store.js
 import { create } from 'zustand';
 import sample from './sampleData.js';
 
-const STORAGE_KEY = 'alloc_v1';
+const KEY_ALLOC = 'alloc_v1';
+const KEY_SCEN  = 'scenarios_v1';
+const KEY_THEME = 'theme_v1';
 
-// Safely load saved allocation from localStorage
-function loadSavedAllocation() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return null;
-    return parsed;
-  } catch (e) {
-    console.warn('Failed to load saved allocation:', e);
-    return null;
-  }
+function load(key, fallback){
+  try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch{ return fallback; }
 }
-
-// Safely save allocation to localStorage
-function saveAllocation(next) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch (e) {
-    console.warn('Failed to save allocation:', e);
-  }
+function save(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
 export const useAppStore = create((set, get) => {
-  // In SSR/build environments, window/localStorage won't exist
-  const saved = typeof window !== 'undefined' ? loadSavedAllocation() : null;
+  const savedAlloc = typeof window !== 'undefined' ? load(KEY_ALLOC, null) : null;
+  const savedScen  = typeof window !== 'undefined' ? load(KEY_SCEN, {}) : {};
+  const savedTheme = typeof window !== 'undefined' ? load(KEY_THEME, 'navy') : 'navy';
 
   return {
-    // Static data (mock for now)
+    // data
     teachers: sample.teachers,
     subjects: sample.subjects,
     classes: sample.classes,
     globals: sample.globals,
 
-    // Allocation state (classId -> { subjectId -> teacherId })
-    allocation: saved ?? sample.initialAllocation,
+    // ui state
+    filters: { grade: 'All', mode: 'All', curriculum: 'All' },
+    activeClassId: sample.classes[0].id,
+    theme: savedTheme,
+    scenarios: savedScen, // { name: allocationMap }
 
-    // Update a single subject allocation and persist it
-    setAllocation(classId, subjectId, teacherId) {
+    // allocation
+    allocation: savedAlloc ?? sample.initialAllocation,
+
+    // actions
+    setTheme(theme){ save(KEY_THEME, theme); set({ theme }); },
+    setFilters(part){ set(state => ({ filters: { ...state.filters, ...part } })); },
+    setActiveClass(id){ set({ activeClassId: id }); },
+
+    setAllocation(classId, subjectId, teacherId){
       set((state) => {
         const next = { ...state.allocation };
         next[classId] = next[classId] ? { ...next[classId] } : {};
-        next[classId][subjectId] = teacherId;
-
-        if (typeof window !== 'undefined') saveAllocation(next);
+        next[classId][subjectId] = teacherId || null;
+        save(KEY_ALLOC, next);
         return { allocation: next };
       });
     },
 
-    // Reset allocations back to initial sample and persist
-    resetAllocation() {
-      const base = sample.initialAllocation;
-      if (typeof window !== 'undefined') saveAllocation(base);
-      set({ allocation: base });
+    resetAllocation(){
+      save(KEY_ALLOC, sample.initialAllocation);
+      set({ allocation: sample.initialAllocation });
     },
 
-    // Replace entire allocation map at once and persist (useful for imports)
-    replaceAllocation(next) {
-      if (typeof window !== 'undefined') saveAllocation(next);
-      set({ allocation: next });
+    replaceAllData({ teachers, subjects, classes, globals, allocation }){
+      const nextAlloc = allocation || {};
+      save(KEY_ALLOC, nextAlloc);
+      set({
+        teachers: teachers ?? sample.teachers,
+        subjects: subjects ?? sample.subjects,
+        classes: classes ?? sample.classes,
+        globals: globals ?? sample.globals,
+        allocation: nextAlloc,
+        activeClassId: (classes && classes[0]?.id) || get().activeClassId
+      });
     },
+
+    // scenarios (versioning)
+    saveScenario(name){
+      const scen = { ...get().scenarios, [name]: get().allocation };
+      save(KEY_SCEN, scen);
+      set({ scenarios: scen });
+    },
+    loadScenario(name){
+      const scen = get().scenarios?.[name];
+      if (!scen) return;
+      save(KEY_ALLOC, scen);
+      set({ allocation: scen });
+    },
+    deleteScenario(name){
+      const scen = { ...get().scenarios };
+      delete scen[name];
+      save(KEY_SCEN, scen);
+      set({ scenarios: scen });
+    }
   };
 });
