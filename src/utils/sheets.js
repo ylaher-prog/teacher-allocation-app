@@ -1,14 +1,19 @@
 // src/utils/sheets.js
-// NOTE: This uses public Google Sheets via the "gviz CSV" endpoint (no auth).
-// Make your sheet "Anyone with the link can view".
+// Read-only sync from a public Google Sheet by URL. No API key needed.
+// Make sure your Sheet is "Anyone with the link can view".
+
+function extractSheetIdFromUrl(url) {
+  // works with https://docs.google.com/spreadsheets/d/<ID>/edit#gid=...
+  const m = String(url).match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : "";
+}
 
 function buildCsvUrl(sheetId, sheetName) {
-  // Public CSV endpoint
   return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
 }
 
 function parseCSV(text) {
-  // Simple CSV parser (no quoted commas). For complex CSV, swap to PapaParse later.
+  // Simple CSV parser (no quoted commas). If you need quotes, later we can swap to PapaParse.
   const lines = String(text).trim().split(/\r?\n/);
   if (!lines.length) return [];
   const headers = lines.shift().split(",").map((s) => s.trim());
@@ -26,69 +31,64 @@ async function fetchCSV(url) {
   return parseCSV(await res.text());
 }
 
-// Map CSV rows to app data shapes
-export async function pullFromSheets({ sheetId, sheetNames }) {
-  const { teachers, subjects, classes, allocation } = sheetNames;
+export async function pullFromSheetUrl(sheetUrl, sheetNames = {
+  teachers: "Teachers",
+  subjects: "Subjects",
+  classes: "Classes",
+  allocation: "Allocation",
+  periods: "Periods" // optional extra: per-class-subject periods
+}) {
+  const sid = extractSheetIdFromUrl(sheetUrl);
+  if (!sid) throw new Error("Could not extract Sheet ID from the URL.");
 
-  const [tRows, sRows, cRows, aRows] = await Promise.all([
-    fetchCSV(buildCsvUrl(sheetId, teachers)),
-    fetchCSV(buildCsvUrl(sheetId, subjects)),
-    fetchCSV(buildCsvUrl(sheetId, classes)),
-    fetchCSV(buildCsvUrl(sheetId, allocation)),
+  const [tRows, sRows, cRows, aRows, pRows] = await Promise.all([
+    fetchCSV(buildCsvUrl(sid, sheetNames.teachers)),
+    fetchCSV(buildCsvUrl(sid, sheetNames.subjects)),
+    fetchCSV(buildCsvUrl(sid, sheetNames.classes)),
+    fetchCSV(buildCsvUrl(sid, sheetNames.allocation)).catch(() => []),
+    fetchCSV(buildCsvUrl(sid, sheetNames.periods)).catch(() => []),
   ]);
 
-  const teachersData = tRows.map((r) => ({
-    id: r.id,
-    name: r.name,
+  const teachers = tRows.map((r) => ({
+    id: r.id, name: r.name,
     maxPeriods: Number(r.maxPeriods || 0),
     maxLearners: Number(r.maxLearners || 0),
-    modes: (r.modes || "").split(/;|\||,/).map((x) => x.trim()).filter(Boolean),
-    specialties: (r.specialties || "").split(/;|\||,/).map((x) => x.trim()).filter(Boolean),
+    modes: (r.modes || "").split(/;|\||,/).map(s=>s.trim()).filter(Boolean),
+    specialties: (r.specialties || "").split(/;|\||,/).map(s=>s.trim()).filter(Boolean),
   }));
 
-  const subjectsData = sRows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    periods: Number(r.periods || 0),
+  const subjects = sRows.map((r) => ({
+    id: r.id, name: r.name,
+    periods: Number(r.periods || 0), // default/global
     requiredSpecialty: r.requiredSpecialty || "",
   }));
 
-  const classesData = cRows.map((r) => ({
-    id: r.id,
-    name: r.name,
+  const classes = cRows.map((r) => ({
+    id: r.id, name: r.name,
     grade: r.grade ? Number(r.grade) : null,
-    mode: r.mode,
-    curriculum: r.curriculum,
+    mode: r.mode, curriculum: r.curriculum,
     learners: Number(r.learners || 0),
     maxLearners: Number(r.maxLearners || 0),
-    subjectIds: (r.subjectIds || "").split(/;|\||,/).map((x) => x.trim()).filter(Boolean),
+    subjectIds: (r.subjectIds || "").split(/;|\||,/).map(s=>s.trim()).filter(Boolean),
   }));
 
-  const allocationMap = {};
+  // Allocation rows: classId,subjectId,teacherId
+  const allocation = {};
   aRows.forEach((r) => {
-    const cId = r.classId, sId = r.subjectId, tId = r.teacherId || "";
-    if (!cId || !sId) return;
-    allocationMap[cId] = allocationMap[cId] || {};
-    allocationMap[cId][sId] = tId;
+    const c = r.classId, s = r.subjectId, t = r.teacherId || "";
+    if (!c || !s) return;
+    allocation[c] = allocation[c] || {};
+    allocation[c][s] = t;
   });
 
-  return {
-    teachers: teachersData,
-    subjects: subjectsData,
-    classes: classesData,
-    allocation: allocationMap,
-  };
-}
-
-// Write-back: use a Google Apps Script Web App URL you deploy (receives JSON)
-// See instructions below to create the Apps Script endpoint and paste URL into Settings.
-export async function pushToSheets(writeUrl, payload) {
-  const res = await fetch(writeUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  // Periods rows (optional): classId,subjectId,periods
+  const periodsMap = {};
+  pRows.forEach((r) => {
+    const c = r.classId, s = r.subjectId, p = Number(r.periods || "");
+    if (!c || !s || !Number.isFinite(p)) return;
+    periodsMap[c] = periodsMap[c] || {};
+    periodsMap[c][s] = p;
   });
-  if (!res.ok) throw new Error(`Push failed: ${res.status}`);
-  return res.json().catch(() => ({}));
-}
 
+  return { teachers, subjects, classes, allocation, periodsMap };
+}
