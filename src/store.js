@@ -1,89 +1,186 @@
+// src/store.js
 import { create } from 'zustand';
 import sample from './sampleData.js';
 
-const KEY_ALLOC = 'alloc_v1';
-const KEY_SCEN  = 'scenarios_v1';
-const KEY_THEME = 'theme_v1';
+// ---- Persistence keys ----
+const KEY_ALLOC   = 'alloc_v1';
+const KEY_SCEN    = 'scenarios_v1';
+const KEY_THEME   = 'theme_v1';
+const KEY_SHEETS  = 'sheet_config_v1';
 
-function load(key, fallback){
-  try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
-  catch{ return fallback; }
+// ---- Safe JSON load/save helpers ----
+const hasWindow = () => typeof window !== 'undefined';
+
+function load(key, fallback) {
+  try {
+    if (!hasWindow()) return fallback;
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
 }
-function save(key, val){
-  try{ localStorage.setItem(key, JSON.stringify(val)); } catch {}
+
+function save(key, value) {
+  try {
+    if (!hasWindow()) return;
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* ignore quota errors, etc. */
+  }
 }
+
+// ---- Merge helpers for sheetConfig ----
+function mergeSheetConfig(base, patch) {
+  if (!patch) return base;
+  const next = { ...base, ...patch };
+  if (patch.sheetNames) {
+    next.sheetNames = { ...base.sheetNames, ...patch.sheetNames };
+  }
+  return next;
+}
+
+// ---- Defaults for sheetConfig (read from localStorage if present) ----
+const DEFAULT_SHEET_CONFIG = {
+  sheetId: '', // paste your Google Sheet ID in the UI Settings
+  sheetNames: {
+    teachers: 'Teachers',
+    subjects: 'Subjects',
+    classes: 'Classes',
+    allocation: 'Allocation',
+  },
+  writeUrl: '',     // Apps Script Web App URL (optional, for push)
+  autoRefresh: false,
+  pollMs: 60000,
+};
 
 export const useAppStore = create((set, get) => {
-  const savedAlloc = typeof window !== 'undefined' ? load(KEY_ALLOC, null) : null;
-  const savedScen  = typeof window !== 'undefined' ? load(KEY_SCEN, {}) : {};
-  const savedTheme = typeof window !== 'undefined' ? load(KEY_THEME, 'navy') : 'navy';
+  // Load persisted state up-front (once)
+  const savedAlloc   = load(KEY_ALLOC,   null);
+  const savedScen    = load(KEY_SCEN,    {});
+  const savedTheme   = load(KEY_THEME,   'navy');
+  const savedSheets  = load(KEY_SHEETS,  null);
 
   return {
-    // data
+    // ---------------------------
+    // DATA (initially mock/sample; can be replaced via Sheets/CSV)
+    // ---------------------------
     teachers: sample.teachers,
     subjects: sample.subjects,
-    classes: sample.classes,
-    globals: sample.globals,
+    classes:  sample.classes,
+    globals:  sample.globals,
 
-    // ui state
+    // ---------------------------
+    // UI STATE
+    // ---------------------------
     filters: { grade: 'All', mode: 'All', curriculum: 'All' },
-    activeClassId: sample.classes[0].id,
+    activeClassId: sample.classes[0]?.id || '',
     theme: savedTheme,
-    scenarios: savedScen, // { name: allocationMap }
+    scenarios: savedScen, // { [name]: allocationMap }
 
-    // allocation
+    // Live sync (Google Sheets) settings
+    sheetConfig: savedSheets ? mergeSheetConfig(DEFAULT_SHEET_CONFIG, savedSheets)
+                             : DEFAULT_SHEET_CONFIG,
+
+    // ---------------------------
+    // ALLOCATION STATE
+    // ---------------------------
+    // Map: { [classId]: { [subjectId]: teacherId } }
     allocation: savedAlloc ?? sample.initialAllocation,
 
-    // actions
-    setTheme(theme){ save(KEY_THEME, theme); set({ theme }); },
-    setFilters(part){ set(state => ({ filters: { ...state.filters, ...part } })); },
-    setActiveClass(id){ set({ activeClassId: id }); },
+    // ---------------------------
+    // ACTIONS — UI helpers
+    // ---------------------------
+    setTheme(theme) {
+      save(KEY_THEME, theme);
+      set({ theme });
+    },
 
-    setAllocation(classId, subjectId, teacherId){
+    setFilters(part) {
+      set((state) => ({ filters: { ...state.filters, ...part } }));
+    },
+
+    setActiveClass(classId) {
+      set({ activeClassId: classId });
+    },
+
+    // ---------------------------
+    // ACTIONS — Allocation updates
+    // ---------------------------
+    setAllocation(classId, subjectId, teacherId) {
       set((state) => {
         const next = { ...state.allocation };
         next[classId] = next[classId] ? { ...next[classId] } : {};
-        next[classId][subjectId] = teacherId || null;
+        next[classId][subjectId] = teacherId || '';
         save(KEY_ALLOC, next);
         return { allocation: next };
       });
     },
 
-    resetAllocation(){
+    resetAllocation() {
       save(KEY_ALLOC, sample.initialAllocation);
       set({ allocation: sample.initialAllocation });
     },
 
-    replaceAllData({ teachers, subjects, classes, globals, allocation }){
-      const nextAlloc = allocation || {};
+    // Replace data wholesale (used by CSV/Sheets import)
+    // Accepts any subset: { teachers?, subjects?, classes?, globals?, allocation? }
+    replaceAllData({ teachers, subjects, classes, globals, allocation }) {
+      const nextTeachers = teachers ?? get().teachers ?? sample.teachers;
+      const nextSubjects = subjects ?? get().subjects ?? sample.subjects;
+      const nextClasses  = classes  ?? get().classes  ?? sample.classes;
+      const nextGlobals  = globals  ?? get().globals  ?? sample.globals;
+
+      // Keep current allocation unless a new one was provided
+      const nextAlloc    = allocation ?? get().allocation ?? sample.initialAllocation;
+
+      // If class list changed, select first class by default
+      const nextActiveClassId = (classes && classes[0]?.id) ? classes[0].id : get().activeClassId;
+
       save(KEY_ALLOC, nextAlloc);
+
       set({
-        teachers: teachers ?? sample.teachers,
-        subjects: subjects ?? sample.subjects,
-        classes: classes ?? sample.classes,
-        globals: globals ?? sample.globals,
+        teachers: nextTeachers,
+        subjects: nextSubjects,
+        classes:  nextClasses,
+        globals:  nextGlobals,
         allocation: nextAlloc,
-        activeClassId: (classes && classes[0]?.id) || get().activeClassId
+        activeClassId: nextActiveClassId,
       });
     },
 
-    // scenarios (versioning)
-    saveScenario(name){
+    // ---------------------------
+    // ACTIONS — Scenarios (versioning)
+    // ---------------------------
+    saveScenario(name) {
+      if (!name || !name.trim()) return;
       const scen = { ...get().scenarios, [name]: get().allocation };
       save(KEY_SCEN, scen);
       set({ scenarios: scen });
     },
-    loadScenario(name){
+
+    loadScenario(name) {
       const scen = get().scenarios?.[name];
       if (!scen) return;
       save(KEY_ALLOC, scen);
       set({ allocation: scen });
     },
-    deleteScenario(name){
+
+    deleteScenario(name) {
       const scen = { ...get().scenarios };
       delete scen[name];
       save(KEY_SCEN, scen);
       set({ scenarios: scen });
-    }
+    },
+
+    // ---------------------------
+    // ACTIONS — Google Sheets config
+    // ---------------------------
+    setSheetConfig(part) {
+      set((state) => {
+        const merged = mergeSheetConfig(state.sheetConfig, part);
+        save(KEY_SHEETS, merged);
+        return { sheetConfig: merged };
+      });
+    },
   };
 });
