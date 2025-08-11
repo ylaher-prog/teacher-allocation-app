@@ -1,3 +1,4 @@
+// src/components/Dashboard.jsx
 import React, { useState } from 'react';
 import FiltersBar from './FiltersBar.jsx';
 import AllocationTable from './AllocationTable.jsx';
@@ -8,7 +9,7 @@ import SettingsBar from './SettingsBar.jsx';
 import MatrixBuilder from './MatrixBuilder.jsx';
 
 export default function Dashboard(){
-  const [tab, setTab] = useState('matrix'); // 'matrix' | 'perclass'
+  const [tab, setTab] = useState('matrix'); // spotlight Matrix
 
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
