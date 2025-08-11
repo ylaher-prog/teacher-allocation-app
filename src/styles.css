@@ -1,56 +1,32 @@
-/* Theme tokens via CSS variables */
+/* Global tokens (Navy default) */
 :root {
   --primary: #0B2042; /* Navy */
-  --accent: #AD9040;  /* Gold */
-  --warn:   #8D1D4B;  /* Maroon */
-  --text:   #0B2042;
-  --surface:#FFFFFF;
-  --muted:  #f3f4f6;
+  --accent:  #AD9040; /* Gold */
+  --warn:    #8D1D4B; /* Maroon */
+  --text:    #0B2042;
+  --surface: #FFFFFF;
+  --muted:   #f3f4f6;
 }
 
-/* Theme: navy (default) */
-[data-theme="navy"] {
-  --primary: #0B2042;
-  --accent: #AD9040;
-  --warn:   #8D1D4B;
-  --text:   #0B2042;
-  --surface:#FFFFFF;
-  --muted:  #f3f4f6;
-}
-
-/* Theme: light */
-[data-theme="light"] {
-  --primary: #1f2937;
-  --accent: #2563eb;
-  --warn:   #b91c1c;
-  --text:   #111827;
-  --surface:#FFFFFF;
-  --muted:  #f9fafb;
-}
-
-/* Theme: dark */
-[data-theme="dark"] {
-  --primary: #93c5fd;
-  --accent: #fde68a;
-  --warn:   #fca5a5;
-  --text:   #e5e7eb;
-  --surface:#0b1220;
-  --muted:  #111827;
-}
+/* Global themes */
+[data-theme="navy"]  { --primary:#0B2042; --accent:#AD9040; --warn:#8D1D4B; --text:#0B2042; --surface:#FFF; --muted:#f3f4f6; }
+[data-theme="light"] { --primary:#1f2937; --accent:#2563eb; --warn:#b91c1c; --text:#111827; --surface:#FFF; --muted:#f9fafb; }
+[data-theme="dark"]  { --primary:#93c5fd; --accent:#fde68a; --warn:#fca5a5; --text:#e5e7eb; --surface:#0b1220; --muted:#111827; }
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-.btn {
-  @apply inline-flex items-center gap-2 rounded-md px-3 py-2 border border-transparent shadow bg-[color:var(--primary)] text-white hover:opacity-90 active:opacity-80;
-}
-.btn-secondary {
-  @apply inline-flex items-center gap-2 rounded-md px-3 py-2 border border-[color:var(--primary)] text-[color:var(--primary)] hover:bg-[color:var(--muted)];
-}
-.card {
-  @apply bg-[color:var(--surface)] rounded-2xl shadow p-4;
-}
-.badge {
-  @apply text-xs px-2 py-1 rounded bg-[color:var(--muted)];
-}
+/* Section-level overrides via inline style or data-section containers.
+   Any component can pass style={{'--primary': '#123456', ...}} to recolor just that block. */
+
+.btn { @apply inline-flex items-center gap-2 rounded-md px-3 py-2 border border-transparent shadow bg-[color:var(--primary)] text-white hover:opacity-90 active:opacity-80; }
+.btn-secondary { @apply inline-flex items-center gap-2 rounded-md px-3 py-2 border border-[color:var(--primary)] text-[color:var(--primary)] hover:bg-[color:var(--muted)]; }
+.btn-ghost { @apply inline-flex items-center gap-2 rounded-md px-3 py-2 text-[color:var(--primary)] hover:bg-[color:var(--muted)]; }
+
+.card { @apply bg-[color:var(--surface)] rounded-2xl shadow p-4; }
+.badge { @apply text-xs px-2 py-1 rounded bg-[color:var(--muted)]; }
+.kpi  { @apply rounded-xl p-4 border bg-[color:var(--surface)]; }
+.input { @apply border rounded px-2 py-1; }
+.label { @apply text-sm text-gray-500; }
+.title { @apply text-lg font-semibold; }
