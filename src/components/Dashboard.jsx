@@ -9,7 +9,7 @@ import SettingsBar from './SettingsBar.jsx';
 import StatsDashboard from './StatsDashboard.jsx';
 import TeacherStats from './TeacherStats.jsx';
 import BuilderWizard from './BuilderWizard.jsx';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 
 export default function Dashboard(){
   const { activeTab } = useAppStore();
