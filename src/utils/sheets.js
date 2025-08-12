@@ -146,11 +146,28 @@ export async function pullFromSheetUrl(
   };
 }
 
-// ---------- Compatibility shims ----------
+// ---------- Compatibility shims (for older imports) ----------
+
+// Old signature: pullFromSheets({ sheetId, sheetNames, sheetUrl })
 export async function pullFromSheets(args = {}) {
   const { sheetId, sheetNames, sheetUrl } = args || {};
-  const url = sheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : '');
+  const url =
+    sheetUrl ||
+    (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : '');
   if (!url) throw new Error('pullFromSheets needs sheetId or sheetUrl');
-  return pullFromSheetUrl(url, sheetNames);
+
+  // If your file already exports pullFromSheetUrl, this will work:
+  if (typeof pullFromSheetUrl === 'function') {
+    return pullFromSheetUrl(url, sheetNames);
+  }
+
+  // If you DON'T have pullFromSheetUrl in this file, either import it here
+  // or paste its implementation above these shims.
+  throw new Error('pullFromSheetUrl is not defined in utils/sheets.js');
 }
-export async function pushToSheets(){ return { ok:true }; }
+
+// Old push function — keep as no-op unless you’ve added your Apps Script write-back
+export async function pushToSheets() {
+  return { ok: true };
+}
+
