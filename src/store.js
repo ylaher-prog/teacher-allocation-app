@@ -43,7 +43,7 @@ const DEFAULT_SHEET_CONFIG = {
   pollMs: 60000,
 };
 
-// ---------- helper functions (TOP-LEVEL, not inside the store object) ----------
+// ---------- helper functions (TOP-LEVEL; NOT inside the store object) ----------
 function rnd() {
   try {
     return crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
@@ -52,7 +52,7 @@ function rnd() {
   }
 }
 function currName(builder, id) {
-  return builder.curricula.find(c => c.id === id)?.name || '';
+  return builder?.curricula?.find((c) => c.id === id)?.name || '';
 }
 
 // ---------- store ----------
@@ -85,7 +85,7 @@ export const useAppStore = create((set, get) => {
     // section theme overrides
     sectionThemes: savedSect,
     setSectionTheme(section, patch) {
-      set(s => {
+      set((s) => {
         const next = {
           ...(s.sectionThemes || {}),
           [section]: { ...(s.sectionThemes?.[section] || {}), ...patch },
@@ -104,7 +104,7 @@ export const useAppStore = create((set, get) => {
     // sheets config
     sheetConfig: savedSheets || DEFAULT_SHEET_CONFIG,
     setSheetConfig(part) {
-      set(s => {
+      set((s) => {
         const merged = { ...s.sheetConfig, ...part };
         if (part && part.sheetNames) {
           merged.sheetNames = { ...s.sheetConfig.sheetNames, ...part.sheetNames };
@@ -137,12 +137,12 @@ export const useAppStore = create((set, get) => {
 
     // basic setters
     setActiveTab(tab) { set({ activeTab: tab }); },
-    setFilters(part)  { set(s => ({ filters: { ...s.filters, ...part } })); },
+    setFilters(part)  { set((s) => ({ filters: { ...s.filters, ...part } })); },
     setActiveClass(id){ set({ activeClassId: id }); },
 
     // allocation & periods
     setAllocation(classId, subjectId, teacherId) {
-      set(s => {
+      set((s) => {
         const next = { ...s.allocation };
         next[classId] = next[classId] ? { ...next[classId] } : {};
         next[classId][subjectId] = teacherId || '';
@@ -155,7 +155,7 @@ export const useAppStore = create((set, get) => {
       set({ allocation: sample.initialAllocation });
     },
     setPeriods(classId, subjectId, value) {
-      set(s => {
+      set((s) => {
         const next = { ...s.periodsMap };
         next[classId] = next[classId] ? { ...next[classId] } : {};
         if (value === '' || value === null || value === undefined) {
@@ -170,74 +170,4 @@ export const useAppStore = create((set, get) => {
     getPeriods(classId, subjectId) {
       const p = get().periodsMap?.[classId]?.[subjectId];
       if (p === undefined || p === null || p === '') {
-        const subj = get().subjects.find(x => x.id === subjectId);
-        return subj?.periods ?? 0;
-        }
-      return p;
-    },
-
-    // replace all (import/sheets)
-    replaceAllData({ teachers, subjects, classes, globals, allocation, periodsMap }) {
-      const nextTeachers = teachers ?? get().teachers ?? sample.teachers;
-      const nextSubjects = subjects ?? get().subjects ?? sample.subjects;
-      const nextClasses  = classes  ?? get().classes  ?? sample.classes;
-      const nextGlobals  = globals  ?? get().globals  ?? sample.globals;
-      const nextAlloc    = allocation ?? get().allocation ?? sample.initialAllocation;
-      const nextPeriods  = periodsMap ?? get().periodsMap ?? {};
-
-      const nextActiveClass = classes && classes[0]?.id
-        ? classes[0].id
-        : get().activeClassId;
-
-      save(KEY_ALLOC, nextAlloc);
-      save(KEY_PERIODS, nextPeriods);
-
-      set({
-        teachers: nextTeachers,
-        subjects: nextSubjects,
-        classes : nextClasses,
-        globals : nextGlobals,
-        allocation: nextAlloc,
-        periodsMap: nextPeriods,
-        activeClassId: nextActiveClass,
-      });
-    },
-
-    // read-only control
-    setReadOnly(flag) { set({ readOnly: !!flag }); },
-
-    // query params
-    applyQueryParams(params) {
-      if (params.theme) {
-        save(KEY_THEME, params.theme);
-        set({ theme: params.theme });
-      }
-      if (params.tab) set({ activeTab: params.tab });
-
-      const f = {};
-      if (params.curriculum) f.curriculum = params.curriculum;
-      if (params.grade)
-        f.grade = isNaN(Number(params.grade)) ? params.grade : Number(params.grade);
-      if (params.mode) f.mode = params.mode;
-      if (Object.keys(f).length) {
-        set(s => ({ filters: { ...s.filters, ...f } }));
-      }
-
-      if (params.sheet) {
-        set(s => {
-          const merged = { ...s.sheetConfig, sheetUrl: params.sheet };
-          save(KEY_SHEETS, merged);
-          return { sheetConfig: merged };
-        });
-      }
-
-      if (params.readonly === 'true') set({ readOnly: true });
-    },
-
-    // theme
-    setTheme(theme) {
-      save(KEY_THEME, theme);
-      set({ theme });
-    },
-  };
-});
+        const subj = get().subjects.find((x) => x
