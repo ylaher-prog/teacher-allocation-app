@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import TopNav from './components/TopNav.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import { useAppStore } from './store.js';
+import { useAppStore } from './store.clean.js';
 import { pullFromSheetUrl } from './utils/sheets.js';
 
 function parseQuery(){
