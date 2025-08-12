@@ -1,6 +1,6 @@
 // src/utils/sheets.js
 
-// ——— helpers ———
+// ---------- helpers ----------
 export function extractSheetIdFromUrl(url) {
   const m = String(url).match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m ? m[1] : "";
@@ -32,7 +32,7 @@ async function fetchCSV(url) {
   return parseCSV(await res.text());
 }
 
-// ——— primary reader ———
+// ---------- primary reader ----------
 export async function pullFromSheetUrl(
   sheetUrl,
   sheetNames = {
@@ -113,7 +113,7 @@ export async function pullFromSheetUrl(
   return { teachers, subjects, classes, allocation, periodsMap };
 }
 
-// ——— compatibility shim (keeps older imports working) ———
+// ---------- compatibility shims (for older imports) ----------
 export async function pullFromSheets(args = {}) {
   const { sheetId, sheetNames, sheetUrl } = args || {};
   const url =
@@ -123,9 +123,8 @@ export async function pullFromSheets(args = {}) {
   return pullFromSheetUrl(url, sheetNames);
 }
 
-// ——— writer stub (no-op unless you wire an Apps Script URL) ———
+// Writer stub. To enable real write-back, provide a Google Apps Script URL.
 export async function pushToSheets(payload, { writeUrl } = {}) {
-  // If you want write-back, pass a Google Apps Script deploy URL as `writeUrl`
   if (!writeUrl) return { ok: false, reason: "No writeUrl configured" };
   const res = await fetch(writeUrl, {
     method: "POST",
