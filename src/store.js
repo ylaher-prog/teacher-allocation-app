@@ -170,4 +170,73 @@ export const useAppStore = create((set, get) => {
     getPeriods(classId, subjectId) {
       const p = get().periodsMap?.[classId]?.[subjectId];
       if (p === undefined || p === null || p === '') {
-        const subj = get().subjects.find((x) => x
+        const subj = get().subjects.find((x) => x.id === subjectId);
+        return subj?.periods ?? 0;
+      }
+      return p;
+    },
+
+    // replace all (import/sheets)
+    replaceAllData({ teachers, subjects, classes, globals, allocation, periodsMap }) {
+      const nextTeachers = teachers ?? get().teachers ?? sample.teachers;
+      const nextSubjects = subjects ?? get().subjects ?? sample.subjects;
+      const nextClasses  = classes  ?? get().classes  ?? sample.classes;
+      const nextGlobals  = globals  ?? get().globals  ?? sample.globals;
+      const nextAlloc    = allocation ?? get().allocation ?? sample.initialAllocation;
+      const nextPeriods  = periodsMap ?? get().periodsMap ?? {};
+
+      const nextActiveClass =
+        classes && classes[0]?.id ? classes[0].id : get().activeClassId;
+
+      save(KEY_ALLOC, nextAlloc);
+      save(KEY_PERIODS, nextPeriods);
+
+      set({
+        teachers: nextTeachers,
+        subjects: nextSubjects,
+        classes : nextClasses,
+        globals : nextGlobals,
+        allocation: nextAlloc,
+        periodsMap: nextPeriods,
+        activeClassId: nextActiveClass,
+      });
+    },
+
+    // read-only control
+    setReadOnly(flag) { set({ readOnly: !!flag }); },
+
+    // query params
+    applyQueryParams(params) {
+      if (params.theme) {
+        save(KEY_THEME, params.theme);
+        set({ theme: params.theme });
+      }
+      if (params.tab) set({ activeTab: params.tab });
+
+      const f = {};
+      if (params.curriculum) f.curriculum = params.curriculum;
+      if (params.grade)
+        f.grade = isNaN(Number(params.grade)) ? params.grade : Number(params.grade);
+      if (params.mode) f.mode = params.mode;
+      if (Object.keys(f).length) {
+        set((s) => ({ filters: { ...s.filters, ...f } }));
+      }
+
+      if (params.sheet) {
+        set((s) => {
+          const merged = { ...s.sheetConfig, sheetUrl: params.sheet };
+          save(KEY_SHEETS, merged);
+          return { sheetConfig: merged };
+        });
+      }
+
+      if (params.readonly === 'true') set({ readOnly: true });
+    },
+
+    // theme
+    setTheme(theme) {
+      save(KEY_THEME, theme);
+      set({ theme });
+    },
+  };
+});
