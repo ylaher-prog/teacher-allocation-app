@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 import { pullFromSheetUrl } from '../utils/sheets.js';
 import ThemeEditor from './ThemeEditor.jsx';
 
