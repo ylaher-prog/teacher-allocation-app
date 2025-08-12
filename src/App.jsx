@@ -1,49 +1,30 @@
-import React, { useEffect } from 'react';
-import TopNav from './components/TopNav.jsx';
-import Dashboard from './components/Dashboard.jsx';
-import { useAppStore } from './store.clean.js';
-import { pullFromSheetUrl } from './utils/sheets.js';
+// src/sampleData.js
+const teachers = [
+  { id: 't1', name: 'Tahira Muhammad',  maxPeriods: 38, maxLearners: 120, modes: ['Live','Flipped'],             specialties: ['English'] },
+  { id: 't2', name: 'Nabeelah Abrahams', maxPeriods: 36, maxLearners: 125, modes: ['Live'],                      specialties: ['Maths'] },
+  { id: 't3', name: 'Aaisha Laher',      maxPeriods: 34, maxLearners: 110, modes: ['Live','Flipped','Self-Paced'], specialties: ['Science'] },
+];
 
-function parseQuery(){
-  const q = new URLSearchParams(window.location.search);
-  const params = {};
-  for (const [k,v] of q.entries()) params[k] = v;
-  return params;
-}
+const subjects = [
+  { id: 's1', name: 'English',           periods: 8, requiredSpecialty: 'English' },
+  { id: 's2', name: 'Maths',             periods: 8, requiredSpecialty: 'Maths'   },
+  { id: 's3', name: 'Combined Science',  periods: 6, requiredSpecialty: 'Science' },
+];
 
-export default function App() {
-  const s = useAppStore();
-  const theme = s.theme;
+const classes = [
+  { id: 'c1', name: 'Grade 5 Live M1',    grade: 5, mode: 'Live',    curriculum: 'CAPS', learners: 32, maxLearners: 40, subjectIds: ['s1','s2','s3'] },
+  { id: 'c2', name: 'Grade 5 Flipped AM', grade: 5, mode: 'Flipped', curriculum: 'CAPS', learners: 28, maxLearners: 40, subjectIds: ['s1','s2','s3'] },
+];
 
-  useEffect(() => { document.documentElement.setAttribute('data-theme', theme || 'navy'); }, [theme]);
+const initialAllocation = {
+  c1: { s1: 't1', s2: 't2', s3: 't3' },
+  c2: { s1: 't1', s2: 't2', s3: ''  },
+};
 
-  // 1) Apply query params once
-  useEffect(() => {
-    const params = parseQuery();
-    if (Object.keys(params).length) {
-      s.applyQueryParams({
-        sheet: params.sheet,
-        tab: params.tab,
-        theme: params.theme,
-        curriculum: params.curriculum,
-        grade: params.grade,
-        mode: params.mode,
-        readonly: params.readonly
-      });
-      // 2) Auto-connect if ?sheet=
-      if (params.sheet) {
-        pullFromSheetUrl(params.sheet, s.sheetConfig.sheetNames)
-          .then(data => s.replaceAllData({ ...data, allocation: data.allocation, periodsMap: data.periodsMap }))
-          .catch(()=>{ /* ignore */ });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+const globals = {
+  maxLearnersPerTeacher: 120,
+  maxPeriodsPerTeacher: 38,
+  maxLearnersPerClass: 40,
+};
 
-  return (
-    <div className="min-h-screen bg-[color:var(--muted)] text-[color:var(--text)]">
-      <TopNav />
-      <Dashboard />
-    </div>
-  );
-}
+export default { teachers, subjects, classes, initialAllocation, globals };
