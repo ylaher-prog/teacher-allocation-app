@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 
 export default function TeacherLoad(){
   const { teachers, classes, subjects, allocation } = useAppStore();
