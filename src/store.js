@@ -48,8 +48,8 @@ export const useAppStore = create((set, get) => {
 
     // -------- section themes
     sectionThemes: savedSect,
-    setSectionTheme(section, patch){
-      set((s)=>{
+    SectionTheme(section, patch){
+      ((s)=>{
         const next = { ...(s.sectionThemes||{}) , [section]: { ...(s.sectionThemes?.[section]||{}), ...patch } };
         save(KEY_SECT, next);
         return { sectionThemes: next };
@@ -64,8 +64,8 @@ export const useAppStore = create((set, get) => {
 
     // -------- sheet config
     sheetConfig: savedSheets || DEFAULT_SHEET_CONFIG,
-    setSheetConfig(part){
-      set((s)=>{
+    SheetConfig(part){
+      ((s)=>{
         const merged = { ...s.sheetConfig, ...part };
         if (part.sheetNames) merged.sheetNames = { ...s.sheetConfig.sheetNames, ...part.sheetNames };
         save(KEY_SHEETS, merged);
@@ -75,8 +75,8 @@ export const useAppStore = create((set, get) => {
 
     // -------- scenarios
     scenarios: savedScen,
-    saveScenario(name){ if(!name?.trim())return; const scen={...get().scenarios,[name]:get().allocation}; save(KEY_SCEN,scen); set({scenarios:scen}); },
-    loadScenario(name){ const scen=get().scenarios?.[name]; if(!scen)return; save(KEY_ALLOC,scen); set({allocation:scen}); },
+    saveScenario(name){ if(!name?.trim())return; const scen={...get().scenarios,[name]:get().allocation}; save(KEY_SCEN,scen); ({scenarios:scen}); },
+    loadScenario(name){ const scen=get().scenarios?.[name]; if(!scen)return; save(KEY_ALLOC,scen); ({allocation:scen}); },
     deleteScenario(name){ const s={...get().scenarios}; delete s[name]; save(KEY_SCEN,s); set({scenarios:s}); },
 
     // -------- navigation & filters
@@ -202,3 +202,7 @@ export const useAppStore = create((set, get) => {
 function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
 function rnd(){ try{ return crypto.getRandomValues(new Uint32Array(1))[0].toString(36);}catch{ return Math.floor(Math.random()*1e9).toString(36);} }
 function currName(builder, id){ return builder.curricula.find(c=>c.id===id)?.name || ''; }
+setTheme(theme) {
+  try { localStorage.setItem('theme_v1', JSON.stringify(theme)); } catch {}
+  set({ theme });
+},
