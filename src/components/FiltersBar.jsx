@@ -1,6 +1,6 @@
 // src/components/FiltersBar.jsx
 import React from 'react';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 
 export default function FiltersBar() {
   const { classes, filters, setFilters, activeClassId, setActiveClass } =
