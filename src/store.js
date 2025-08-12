@@ -43,18 +43,6 @@ const DEFAULT_SHEET_CONFIG = {
   pollMs: 60000,
 };
 
-// ---------- helper functions (TOP-LEVEL; NOT inside the store object) ----------
-function rnd() {
-  try {
-    return crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
-  } catch {
-    return Math.floor(Math.random() * 1e9).toString(36);
-  }
-}
-function currName(builder, id) {
-  return builder?.curricula?.find((c) => c.id === id)?.name || '';
-}
-
 // ---------- store ----------
 export const useAppStore = create((set, get) => {
   // load persisted
@@ -233,7 +221,7 @@ export const useAppStore = create((set, get) => {
       if (params.readonly === 'true') set({ readOnly: true });
     },
 
-    // theme
+    // theme (INSIDE the store object)
     setTheme(theme) {
       save(KEY_THEME, theme);
       set({ theme });
