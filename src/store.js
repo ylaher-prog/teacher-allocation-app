@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import sample from './sampleData.js';
 
-// ---- localStorage helpers (safe when SSR/building) ----
+// ---------- localStorage helpers ----------
 const hasWindow = () => typeof window !== 'undefined';
 const load = (k, fb) => {
   try {
@@ -17,12 +17,10 @@ const save = (k, v) => {
   try {
     if (!hasWindow()) return;
     localStorage.setItem(k, JSON.stringify(v));
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 };
 
-// ---- storage keys ----
+// ---------- keys ----------
 const KEY_ALLOC   = 'alloc_v1';
 const KEY_SCEN    = 'scenarios_v1';
 const KEY_THEME   = 'theme_v1';
@@ -30,23 +28,36 @@ const KEY_SHEETS  = 'sheet_config_v1';
 const KEY_PERIODS = 'periods_v1';
 const KEY_SECT    = 'section_themes_v1';
 
-// ---- default sheet config ----
+// ---------- defaults ----------
 const DEFAULT_SHEET_CONFIG = {
   sheetUrl: '',
   sheetNames: {
-    teachers : 'Teachers',
-    subjects : 'Subjects',
-    classes  : 'Classes',
+    teachers  : 'Teachers',
+    subjects  : 'Subjects',
+    classes   : 'Classes',
     allocation: 'Allocation',
-    periods  : 'Periods',
+    periods   : 'Periods',
   },
   writeUrl: '',
   autoRefresh: false,
   pollMs: 60000,
 };
 
+// ---------- helper functions (TOP-LEVEL, not inside the store object) ----------
+function rnd() {
+  try {
+    return crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+  } catch {
+    return Math.floor(Math.random() * 1e9).toString(36);
+  }
+}
+function currName(builder, id) {
+  return builder.curricula.find(c => c.id === id)?.name || '';
+}
+
+// ---------- store ----------
 export const useAppStore = create((set, get) => {
-  // load persisted bits
+  // load persisted
   const savedAlloc   = load(KEY_ALLOC, null);
   const savedScen    = load(KEY_SCEN, {});
   const savedTheme   = load(KEY_THEME, 'navy');
@@ -55,7 +66,7 @@ export const useAppStore = create((set, get) => {
   const savedSect    = load(KEY_SECT, {});
 
   return {
-    // ---- core data ----
+    // data
     teachers : sample.teachers,
     subjects : sample.subjects,
     classes  : sample.classes,
@@ -64,17 +75,17 @@ export const useAppStore = create((set, get) => {
     allocation: savedAlloc ?? sample.initialAllocation,
     periodsMap: savedPeriods || {},
 
-    // ---- ui state ----
+    // ui
     activeTab: 'dashboard',
     filters: { curriculum: 'All', grade: 'All', mode: 'All' },
     activeClassId: sample.classes[0]?.id || '',
     theme: savedTheme,
     readOnly: false,
 
-    // ---- per-section style overrides (CSS vars) ----
+    // section theme overrides
     sectionThemes: savedSect,
     setSectionTheme(section, patch) {
-      set((s) => {
+      set(s => {
         const next = {
           ...(s.sectionThemes || {}),
           [section]: { ...(s.sectionThemes?.[section] || {}), ...patch },
@@ -90,10 +101,10 @@ export const useAppStore = create((set, get) => {
       return style;
     },
 
-    // ---- Google Sheets config ----
+    // sheets config
     sheetConfig: savedSheets || DEFAULT_SHEET_CONFIG,
     setSheetConfig(part) {
-      set((s) => {
+      set(s => {
         const merged = { ...s.sheetConfig, ...part };
         if (part && part.sheetNames) {
           merged.sheetNames = { ...s.sheetConfig.sheetNames, ...part.sheetNames };
@@ -103,7 +114,7 @@ export const useAppStore = create((set, get) => {
       });
     },
 
-    // ---- scenarios (versioning) ----
+    // scenarios
     scenarios: savedScen,
     saveScenario(name) {
       if (!name || !name.trim()) return;
@@ -124,14 +135,14 @@ export const useAppStore = create((set, get) => {
       set({ scenarios: s });
     },
 
-    // ---- simple setters ----
+    // basic setters
     setActiveTab(tab) { set({ activeTab: tab }); },
-    setFilters(part)  { set((s) => ({ filters: { ...s.filters, ...part } })); },
+    setFilters(part)  { set(s => ({ filters: { ...s.filters, ...part } })); },
     setActiveClass(id){ set({ activeClassId: id }); },
 
-    // ---- allocation + periods editing ----
+    // allocation & periods
     setAllocation(classId, subjectId, teacherId) {
-      set((s) => {
+      set(s => {
         const next = { ...s.allocation };
         next[classId] = next[classId] ? { ...next[classId] } : {};
         next[classId][subjectId] = teacherId || '';
@@ -144,7 +155,7 @@ export const useAppStore = create((set, get) => {
       set({ allocation: sample.initialAllocation });
     },
     setPeriods(classId, subjectId, value) {
-      set((s) => {
+      set(s => {
         const next = { ...s.periodsMap };
         next[classId] = next[classId] ? { ...next[classId] } : {};
         if (value === '' || value === null || value === undefined) {
@@ -159,13 +170,13 @@ export const useAppStore = create((set, get) => {
     getPeriods(classId, subjectId) {
       const p = get().periodsMap?.[classId]?.[subjectId];
       if (p === undefined || p === null || p === '') {
-        const subj = get().subjects.find((x) => x.id === subjectId);
+        const subj = get().subjects.find(x => x.id === subjectId);
         return subj?.periods ?? 0;
-      }
+        }
       return p;
     },
 
-    // ---- replace everything from import/sheets ----
+    // replace all (import/sheets)
     replaceAllData({ teachers, subjects, classes, globals, allocation, periodsMap }) {
       const nextTeachers = teachers ?? get().teachers ?? sample.teachers;
       const nextSubjects = subjects ?? get().subjects ?? sample.subjects;
@@ -174,8 +185,9 @@ export const useAppStore = create((set, get) => {
       const nextAlloc    = allocation ?? get().allocation ?? sample.initialAllocation;
       const nextPeriods  = periodsMap ?? get().periodsMap ?? {};
 
-      const nextActiveClass =
-        classes && classes[0]?.id ? classes[0].id : get().activeClassId;
+      const nextActiveClass = classes && classes[0]?.id
+        ? classes[0].id
+        : get().activeClassId;
 
       save(KEY_ALLOC, nextAlloc);
       save(KEY_PERIODS, nextPeriods);
@@ -191,10 +203,10 @@ export const useAppStore = create((set, get) => {
       });
     },
 
-    // ---- read-only share link control ----
+    // read-only control
     setReadOnly(flag) { set({ readOnly: !!flag }); },
 
-    // ---- apply query params (?theme=navy&tab=matrix&sheet=...) ----
+    // query params
     applyQueryParams(params) {
       if (params.theme) {
         save(KEY_THEME, params.theme);
@@ -208,11 +220,11 @@ export const useAppStore = create((set, get) => {
         f.grade = isNaN(Number(params.grade)) ? params.grade : Number(params.grade);
       if (params.mode) f.mode = params.mode;
       if (Object.keys(f).length) {
-        set((s) => ({ filters: { ...s.filters, ...f } }));
+        set(s => ({ filters: { ...s.filters, ...f } }));
       }
 
       if (params.sheet) {
-        set((s) => {
+        set(s => {
           const merged = { ...s.sheetConfig, sheetUrl: params.sheet };
           save(KEY_SHEETS, merged);
           return { sheetConfig: merged };
@@ -222,7 +234,7 @@ export const useAppStore = create((set, get) => {
       if (params.readonly === 'true') set({ readOnly: true });
     },
 
-    // ---- theme control (persisted) ----
+    // theme
     setTheme(theme) {
       save(KEY_THEME, theme);
       set({ theme });
