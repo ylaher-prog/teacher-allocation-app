@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 
 export default function AllocationTable(){
   const { classes, subjects, teachers, allocation, setAllocation, activeClassId } = useAppStore();
