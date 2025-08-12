@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 import { exportToXLSX } from '../utils/xlsxExport.js';
 import SharePanel from './share/SharePanel.jsx';
 
