@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useAppStore } from '../store.js';
+import { useAppStore } from '../store.clean.js';
 import { evaluateConstraints } from '../utils/constraints.js';
 
 export default function WarningsPanel(){
