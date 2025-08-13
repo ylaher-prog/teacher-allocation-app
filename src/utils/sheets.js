@@ -1,135 +1,159 @@
 // src/utils/sheets.js
+// Single-link Google Sheets import using gviz CSV endpoints.
+// Required sheet names: Teachers, Subjects, Classes, Allocation, Periods
 
-// ---------- helpers ----------
-export function extractSheetIdFromUrl(url) {
-  const m = String(url).match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  return m ? m[1] : "";
-}
+const DEFAULT_SHEETS = ['Teachers','Subjects','Classes','Allocation','Periods'];
 
-export function buildCsvUrl(id, name) {
-  return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
-    name
-  )}`;
-}
+export async function pullFromSheets(spreadsheetUrl, sheetNames = DEFAULT_SHEETS){
+  const id = extractSheetId(spreadsheetUrl);
+  if(!id) throw new Error('Invalid Google Sheets URL. Expect /spreadsheets/d/<ID>/...');
 
-export function parseCSV(text) {
-  const lines = String(text).trim().split(/\r?\n/);
-  if (!lines.length) return [];
-  const headers = lines.shift().split(",").map((s) => s.trim());
-  return lines
-    .filter((ln) => ln.trim().length > 0)
-    .map((line) => {
-      const cells = line.split(",").map((s) => s.trim());
-      const obj = {};
-      headers.forEach((h, i) => (obj[h] = cells[i] ?? ""));
-      return obj;
-    });
-}
-
-async function fetchCSV(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-  return parseCSV(await res.text());
-}
-
-// ---------- primary reader ----------
-export async function pullFromSheetUrl(
-  sheetUrl,
-  sheetNames = {
-    teachers: "Teachers",
-    subjects: "Subjects",
-    classes: "Classes",
-    allocation: "Allocation",
-    periods: "Periods",
-  }
-) {
-  const sid = extractSheetIdFromUrl(sheetUrl);
-  if (!sid) throw new Error("Could not extract Sheet ID from the URL.");
-
-  const [tRows, sRows, cRows, aRows, pRows] = await Promise.all([
-    fetchCSV(buildCsvUrl(sid, sheetNames.teachers)),
-    fetchCSV(buildCsvUrl(sid, sheetNames.subjects)),
-    fetchCSV(buildCsvUrl(sid, sheetNames.classes)),
-    fetchCSV(buildCsvUrl(sid, sheetNames.allocation)).catch(() => []),
-    fetchCSV(buildCsvUrl(sid, sheetNames.periods)).catch(() => []),
+  const [teachersCSV, subjectsCSV, classesCSV, allocationCSV, periodsCSV] = await Promise.all([
+    fetchCSV(csvByName(id, sheetNames[0])),
+    fetchCSV(csvByName(id, sheetNames[1])),
+    fetchCSV(csvByName(id, sheetNames[2])),
+    fetchCSV(csvByName(id, sheetNames[3])),
+    fetchCSV(csvByName(id, sheetNames[4])),
   ]);
 
-  const teachers = tRows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    maxPeriods: Number(r.maxPeriods || 0),
-    maxLearners: Number(r.maxLearners || 0),
-    modes: (r.modes || "")
-      .split(/;|\||,/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-    specialties: (r.specialties || "")
-      .split(/;|\||,/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-  }));
+  const teachers = parseTeachers(teachersCSV);
+  const subjects = parseSubjects(subjectsCSV);
+  const classes  = parseClasses(classesCSV);
+  const allocation = parseAllocation(allocationCSV);
+  const periodsMap = parsePeriods(periodsCSV);
 
-  const subjects = sRows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    periods: Number(r.periods || 0),
-    requiredSpecialty: r.requiredSpecialty || "",
-  }));
-
-  const classes = cRows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    grade: r.grade ? Number(r.grade) : null,
-    mode: r.mode,
-    curriculum: r.curriculum,
-    learners: Number(r.learners || 0),
-    maxLearners: Number(r.maxLearners || 0),
-    subjectIds: (r.subjectIds || "")
-      .split(/;|\||,/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-  }));
-
-  const allocation = {};
-  aRows.forEach((r) => {
-    const c = r.classId,
-      s = r.subjectId,
-      t = r.teacherId || "";
-    if (!c || !s) return;
-    allocation[c] = allocation[c] || {};
-    allocation[c][s] = t;
-  });
-
-  const periodsMap = {};
-  pRows.forEach((r) => {
-    const c = r.classId,
-      s = r.subjectId,
-      p = Number(r.periods || "");
-    if (!c || !s || !Number.isFinite(p)) return;
-    periodsMap[c] = periodsMap[c] || {};
-    periodsMap[c][s] = p;
-  });
-
-  return { teachers, subjects, classes, allocation, periodsMap };
+  return { teachers, subjects, classes, allocation, periodsMap, globals: {} };
 }
 
-// ---------- compatibility shims (for older imports) ----------
-export async function pullFromSheets(args = {}) {
-  const { sheetId, sheetNames, sheetUrl } = args || {};
-  const url =
-    sheetUrl ||
-    (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : "");
-  if (!url) throw new Error("pullFromSheets needs sheetId or sheetUrl");
-  return pullFromSheetUrl(url, sheetNames);
+function extractSheetId(url){
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : null;
 }
 
-// Writer stub. To enable real write-back, provide a Google Apps Script URL.
-export async function pushToSheets(payload, { writeUrl } = {}) {
-  if (!writeUrl) return { ok: false, reason: "No writeUrl configured" };
-  const res = await fetch(writeUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload || {}),
-  });
-  return { ok: res.ok, status: res.status };
+function csvByName(id, name){
+  const n = encodeURIComponent(name);
+  // gviz by sheet name (no gid needed)
+  return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${n}`;
 }
+
+async function fetchCSV(url){
+  const res = await fetch(url, { cache: 'no-store' });
+  if(!res.ok) throw new Error(`Fetch failed: ${url}`);
+  return await res.text();
+}
+
+// --- tiny csv parser (handles quotes) ---
+function parseCSV(text){
+  const rows = [];
+  let i=0, field='', row=[], inQ=false;
+  while(i<text.length){
+    const c=text[i];
+    if(inQ){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field+='"'; i++; }
+        else inQ=false;
+      } else field+=c;
+    }else{
+      if(c === '"') inQ=true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n' || c === '\r'){
+        if(field!=='' || row.length) { row.push(field); rows.push(row); row=[]; field=''; }
+        // swallow CRLF
+        if(c === '\r' && text[i+1] === '\n') i++;
+      } else field+=c;
+    }
+    i++;
+  }
+  if(field!=='' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function parseTeachers(csv){
+  const rows = parseCSV(csv);
+  const [h, ...data] = rows;
+  const idx = indexOfCols(h);
+  return data.filter(r=>r.length>0).map((r, n) => ({
+    id: r[idx.id] || `t${n+1}`,
+    name: r[idx.name] || '',
+    maxPeriods: num(r[idx.maxPeriods], 999),
+    maxLearners: num(r[idx.maxLearners], 9999),
+    modes: splitList(r[idx.modes] || 'Live,Flipped,Self-Paced'),
+    specialties: splitList(r[idx.specialties] || ''),
+  }));
+}
+
+function parseSubjects(csv){
+  const rows = parseCSV(csv);
+  const [h, ...data] = rows;
+  const idx = indexOfCols(h);
+  return data.filter(r=>r.length>0).map((r, n) => ({
+    id: r[idx.id] || `s${n+1}`,
+    name: r[idx.name] || '',
+    periods: num(r[idx.periods], 0),
+    requiredSpecialty: r[idx.requiredSpecialty] || '',
+  }));
+}
+
+function parseClasses(csv){
+  const rows = parseCSV(csv);
+  const [h, ...data] = rows;
+  const idx = indexOfCols(h);
+  return data.filter(r=>r.length>0).map((r, n) => ({
+    id: r[idx.id] || `c${n+1}`,
+    name: r[idx.name] || '',
+    grade: num(r[idx.grade], ''),
+    mode: r[idx.mode] || 'Live',
+    curriculum: r[idx.curriculum] || '',
+    learners: num(r[idx.learners], 0),
+    maxLearners: num(r[idx.maxLearners], 999),
+    subjectIds: splitList(r[idx.subjectIds] || ''),
+  }));
+}
+
+function parseAllocation(csv){
+  const rows = parseCSV(csv);
+  const [h, ...data] = rows;
+  const idx = indexOfCols(h);
+  const alloc = {};
+  for(const r of data){
+    const c = r[idx.classId]; const s = r[idx.subjectId]; const t = r[idx.teacherId] || '';
+    if(!c || !s) continue;
+    alloc[c] = alloc[c] || {};
+    alloc[c][s] = t;
+  }
+  return alloc;
+}
+
+function parsePeriods(csv){
+  const rows = parseCSV(csv);
+  const [h, ...data] = rows;
+  const idx = indexOfCols(h);
+  const map = {};
+  for(const r of data){
+    const c=r[idx.classId]; const s=r[idx.subjectId]; const p=num(r[idx.periods], null);
+    if(!c || !s || p==null) continue;
+    map[c] = map[c] || {};
+    map[c][s] = p;
+  }
+  return map;
+}
+
+// helpers
+function indexOfCols(header){
+  const norm = header.map(x=>x?.trim().toLowerCase());
+  const idx = (name) => norm.indexOf(name.toLowerCase());
+  return {
+    // common
+    id: idx('id'), name: idx('name'),
+    // teachers
+    maxPeriods: idx('maxperiods'), maxLearners: idx('maxlearners'), modes: idx('modes'), specialties: idx('specialties'),
+    // subjects
+    periods: idx('periods'), requiredSpecialty: idx('requiredqualification') >= 0 ? idx('requiredqualification') : idx('requiredspecialisation') >= 0 ? idx('requiredspecialisation') : idx('requiredspecialty'),
+    // classes
+    grade: idx('grade'), mode: idx('mode'), curriculum: idx('curriculum'), learners: idx('learners'), maxLearners: idx('maxlearnersperclass') >= 0 ? idx('maxlearnersperclass') : idx('maxlearners'), subjectIds: idx('subjects') >= 0 ? idx('subjects') : idx('subjectids'),
+    // allocation/periods
+    classId: idx('classid'), subjectId: idx('subjectid'), teacherId: idx('teacherid'),
+  };
+}
+function splitList(s){ return s ? s.split(/[;,]/).map(x=>x.trim()).filter(Boolean) : []; }
+function num(v, fb){ const n = Number(v); return Number.isFinite(n) ? n : fb; }
