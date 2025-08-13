@@ -1,80 +1,55 @@
-import React, { useRef, useState } from 'react';
-import { useAppStore } from '../store.clean.js';
-import { exportToXLSX } from '../utils/xlsxExport.js';
+import React from 'react';
+import { useAppStore } from '../appStore.js';
+import { downloadCSV } from '../utils/export.js';
 
 export default function ImportExportBar(){
-  const fileRef = useRef(null);
-  const { teachers, subjects, classes, allocation, replaceAllData } = useAppStore();
-  const [csvUrl, setCsvUrl] = useState('');
+  const { allocation, periodsMap, teachers, classes, subjects } = useAppStore();
 
-  const handleExportCSV = () => {
-    const rows = [];
-    rows.push(['Class','Subject','Teacher'].join(','));
-    classes.forEach(cls=>{
-      const alloc = allocation[cls.id] || {};
-      cls.subjectIds.forEach(sid=>{
-        const s = subjects.find(x=> x.id===sid);
-        const tid = alloc[sid] || '';
-        const t = teachers.find(x=> x.id===tid);
-        rows.push([cls.name, s?.name || sid, t?.name || ''].join(','));
-      });
-    });
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'allocation.csv'; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const applyCsvText = (text) => {
-    const lines = String(text).trim().split(/\r?\n/);
-    lines.shift(); // header
-    const nameToClass   = Object.fromEntries(classes.map(c=>[c.name, c]));
-    const nameToSubject = Object.fromEntries(subjects.map(s=>[s.name, s]));
-    const nameToTeacher = Object.fromEntries(teachers.map(t=>[t.name, t]));
-    const nextAlloc = {};
-    for (const line of lines){
-      const [cName, sName, tName] = line.split(',').map(x=> x.trim());
-      const c = nameToClass[cName]; const s = nameToSubject[sName]; const t = nameToTeacher[tName];
-      if (!c || !s) continue;
-      nextAlloc[c.id] = nextAlloc[c.id] || {};
-      nextAlloc[c.id][s.id] = t ? t.id : '';
+  function exportAlloc(){
+    const rows = [['classId','subjectId','teacherId']];
+    for(const cid of Object.keys(allocation)){
+      for(const sid of Object.keys(allocation[cid] || {})){
+        rows.push([cid, sid, allocation[cid][sid] || '']);
+      }
     }
-    replaceAllData({ allocation: nextAlloc });
-    alert('Allocation imported from CSV');
-  };
-
-  const handleImportFile = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => { applyCsvText(reader.result); e.target.value = ''; };
-    reader.readAsText(f);
-  };
-
-  const handleFetchCsvUrl = async () => {
-    try{
-      const res = await fetch(csvUrl);
-      const text = await res.text();
-      applyCsvText(text);
-    }catch(err){ alert('Failed to fetch CSV: ' + err.message); }
-  };
+    downloadCSV('allocation.csv', rows);
+  }
+  function exportPeriods(){
+    const rows = [['classId','subjectId','periods']];
+    for(const cid of Object.keys(periodsMap)){
+      for(const sid of Object.keys(periodsMap[cid] || {})){
+        rows.push([cid, sid, periodsMap[cid][sid]]);
+      }
+    }
+    downloadCSV('periods.csv', rows);
+  }
+  function exportTeacherStats(){
+    // simple rollup like in TeacherStats
+    const per={}, learners={}, classesSet={}, subjSet={};
+    for(const c of classes){
+      const a = allocation[c.id] || {};
+      const counted = new Set();
+      for(const sId of Object.keys(a)){
+        const tId = a[sId]; if(!tId) continue;
+        per[tId] = (per[tId] ?? 0) + (periodsMap?.[c.id]?.[sId] ?? subjects.find(s=>s.id===sId)?.periods ?? 0);
+        if(!counted.has(tId)){ learners[tId]=(learners[tId]??0)+(c.learners||0); counted.add(tId); }
+        (classesSet[tId]=classesSet[tId]||new Set()).add(c.id);
+        (subjSet[tId]=subjSet[tId]||new Set()).add(sId);
+      }
+    }
+    const rows = [['teacher','periods','learners','classes','subjects']];
+    for(const t of teachers){
+      rows.push([t.name, per[t.id]??0, learners[t.id]??0, classesSet[t.id]?.size??0, subjSet[t.id]?.size??0]);
+    }
+    downloadCSV('teacher-stats.csv', rows);
+  }
 
   return (
-    <div className="card space-y-3">
-      <div className="text-lg font-semibold">Import / Export</div>
-      <div className="flex flex-wrap gap-2">
-        <button className="btn" onClick={()=> exportToXLSX({ allocation, teachers, subjects, classes })}>Export XLSX</button>
-        <button className="btn-secondary" onClick={handleExportCSV}>Export CSV</button>
-      </div>
-      <div className="flex flex-col gap-2">
-        <div className="text-sm text-gray-600">Import Allocation from CSV (columns: Class, Subject, Teacher)</div>
-        <input type="file" accept=".csv" ref={fileRef} onChange={handleImportFile} />
-        <div className="flex gap-2 items-center">
-          <input className="border rounded px-2 py-1 flex-1" placeholder="Paste CSV URL (e.g., Google Sheet published as CSV)" value={csvUrl} onChange={e=> setCsvUrl(e.target.value)} />
-          <button className="btn-secondary" onClick={handleFetchCsvUrl}>Fetch</button>
-        </div>
-      </div>
+    <div style={{ maxWidth:980, margin:'8px auto', padding:'8px 16px', display:'flex', gap:8 }}>
+      <button onClick={exportAlloc}  style={btn()}>Export Allocation</button>
+      <button onClick={exportPeriods} style={btn()}>Export Periods</button>
+      <button onClick={exportTeacherStats} style={btn()}>Export Teacher Stats</button>
     </div>
   );
 }
+const btn = () => ({ padding:'8px 12px', borderRadius:8, border:'1px solid #e5e7eb', cursor:'pointer', background:'#0B2042', color:'#fff' });
