@@ -1,19 +1,33 @@
 import React from 'react';
 import { useAppStore } from '../appStore.js';
+import SettingsBar from './SettingsBar.jsx';
+import FiltersBar from './FiltersBar.jsx';
+import MatrixBuilder from './MatrixBuilder.jsx';
+import WarningsPanel from './WarningsPanel.jsx';
+import TeacherStats from './TeacherStats.jsx';
+import ImportExportBar from './ImportExportBar.jsx';
 
 export default function Dashboard(){
-  const { teachers, subjects, classes } = useAppStore();
+  const { teachers, subjects, classes, activeTab, setActiveTab } = useAppStore();
+
   return (
-    <main style={{ maxWidth: 980, margin: '0 auto', padding: '24px 16px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+    <div style={{ maxWidth:980, margin:'0 auto', padding:'12px 16px' }}>
+      {/* Summary cards */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16 }}>
         <Card title="Teachers" value={teachers.length} />
         <Card title="Subjects" value={subjects.length} />
         <Card title="Classes" value={classes.length} />
       </div>
-      <p style={{ marginTop: 24, opacity: 0.8 }}>
-        If you can see this, the app is mounted correctly. Next we can plug in Sheets + Matrix.
-      </p>
-    </main>
+
+      <SettingsBar />
+      <FiltersBar />
+      <ImportExportBar />
+
+      {/* Tabs could be expanded later; keep single dashboard for now */}
+      <MatrixBuilder />
+      <WarningsPanel />
+      <TeacherStats />
+    </div>
   );
 }
 
