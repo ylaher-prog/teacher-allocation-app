@@ -1,16 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Theme tokens (defaults: navy) */
+/* No Tailwind needed for this minimal view; arbitrary vars still ok if you use Tailwind elsewhere */
 :root {
   --primary:#0B2042;
   --accent:#AD9040;
   --warn:#8D1D4B;
   --text:#0B2042;
   --surface:#FFFFFF;
-  --muted:#f3f4f6;
+  --muted:#F3F4F6;
 }
-[data-theme="navy"]  { --primary:#0B2042; --accent:#AD9040; --warn:#8D1D4B; --text:#0B2042; --surface:#ffffff; --muted:#f3f4f6; }
-[data-theme="light"] { --primary:#1f2937; --accent:#2563eb; --warn:#b91c1c; --text:#111827; --surface:#ffffff; --muted:#f9fafb; }
+[data-theme="navy"]  { --primary:#0B2042; --accent:#AD9040; --warn:#8D1D4B; --text:#0B2042; --surface:#ffffff; --muted:#F3F4F6; }
+[data-theme="light"] { --primary:#1f2937; --accent:#2563eb; --warn:#b91c1c; --text:#111827; --surface:#ffffff; --muted:#F9FAFB; }
 [data-theme="dark"]  { --primary:#93c5fd; --accent:#fde68a; --warn:#fca5a5; --text:#e5e7eb; --surface:#0b1220; --muted:#111827; }
+
+html, body { margin: 0; padding: 0; }
