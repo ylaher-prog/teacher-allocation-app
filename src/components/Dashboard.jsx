@@ -4,24 +4,24 @@ import { useAppStore } from '../appStore.js';
 export default function Dashboard(){
   const { teachers, subjects, classes } = useAppStore();
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      <div className="grid grid-cols-3 gap-4">
-        <div className="p-4 rounded border">
-          <div className="text-sm text-gray-500">Teachers</div>
-          <div className="text-2xl font-semibold">{teachers.length}</div>
-        </div>
-        <div className="p-4 rounded border">
-          <div className="text-sm text-gray-500">Subjects</div>
-          <div className="text-2xl font-semibold">{subjects.length}</div>
-        </div>
-        <div className="p-4 rounded border">
-          <div className="text-sm text-gray-500">Classes</div>
-          <div className="text-2xl font-semibold">{classes.length}</div>
-        </div>
+    <main style={{ maxWidth: 980, margin: '0 auto', padding: '24px 16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+        <Card title="Teachers" value={teachers.length} />
+        <Card title="Subjects" value={subjects.length} />
+        <Card title="Classes" value={classes.length} />
       </div>
-      <p className="mt-6 text-gray-600">
-        If you can see this, the app builds correctly. We’ll add Sheets + Matrix next.
+      <p style={{ marginTop: 24, opacity: 0.8 }}>
+        If you can see this, the app is mounted correctly. Next we can plug in Sheets + Matrix.
       </p>
+    </main>
+  );
+}
+
+function Card({ title, value }){
+  return (
+    <div style={{ padding: 16, background: 'var(--surface)', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+      <div style={{ fontSize: 12, color: '#6b7280' }}>{title}</div>
+      <div style={{ fontSize: 28, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
