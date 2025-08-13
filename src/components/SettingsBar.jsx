@@ -4,7 +4,13 @@ import { pullFromSheets } from '../utils/sheets.js';
 import { pushToSheets } from '../utils/sheetsWrite.js';
 
 export default function SettingsBar({ compact }){
-  const { sheetLink, setSheetLink, replaceAllData, saveScenario, loadScenario, deleteScenario, scenarios, readOnly, constraints, setConstraints } = useAppStore();
+  const {
+    sheetLink, setSheetLink, replaceAllData,
+    saveScenario, loadScenario, deleteScenario, scenarios,
+    readOnly, constraints, setConstraints,
+    autoAllocate
+  } = useAppStore();
+
   const [name, setName] = useState('');
   const [writeUrl, setWriteUrl] = useState(localStorage.getItem('write_url_v1') || '');
 
@@ -16,7 +22,6 @@ export default function SettingsBar({ compact }){
       alert('Synced from Google Sheets');
     }catch(err){ console.error(err); alert('Sync failed: ' + err.message); }
   }
-
   async function pushNow(){
     try{
       if(!writeUrl) return alert('Set Write URL (Apps Script) first.');
@@ -27,12 +32,16 @@ export default function SettingsBar({ compact }){
 
   return (
     <div style={{display:'grid', gap:8}}>
-      <div style={{display:'flex', gap:8}}>
+      <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
         <input style={inp(1)} placeholder="Paste Google Sheet link" value={sheetLink} onChange={e=>setSheetLink(e.target.value)} disabled={readOnly}/>
         <button onClick={syncNow} disabled={readOnly} style={btn()}>Sync</button>
+
+        {/* NEW: Auto allocate */}
+        <button onClick={()=>autoAllocate({ overwrite:false })} style={btn('primary')}>Auto-Allocate (fill)</button>
+        <button onClick={()=>{ if(confirm('Rebalance the whole matrix? This will overwrite assignments.')) autoAllocate({ overwrite:true }); }} style={btn('outline')}>Auto-Allocate (rebalance)</button>
       </div>
 
-      <div style={{display:'flex', gap:8, alignItems:'center'}}>
+      <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
         <input style={inp()} placeholder="Scenario name" value={name} onChange={e=>setName(e.target.value)} />
         <button onClick={()=>{ saveScenario(name); setName(''); }} style={btn()}>Save</button>
         <select onChange={e=>loadScenario(e.target.value)} style={inp()} >
@@ -58,5 +67,11 @@ export default function SettingsBar({ compact }){
   );
 }
 const inp = (grow) => ({ flexGrow: grow?1:0, padding:'8px 10px', border:'1px solid #e5e7eb', borderRadius:8, minWidth:160 });
-const btn = (kind) => ({ padding:'8px 12px', borderRadius:8, border:'1px solid #e5e7eb', cursor:'pointer', background: kind==='warn'?'#8D1D4B':'#0B2042', color:'#fff' });
+const btn = (kind) => {
+  const base = { padding:'8px 12px', borderRadius:8, border:'1px solid #e5e7eb', cursor:'pointer', background:'#0B2042', color:'#fff' };
+  if(kind==='warn') return { ...base, background:'#8D1D4B' };
+  if(kind==='outline') return { ...base, background:'#fff', color:'#0B2042' };
+  if(kind==='primary') return base;
+  return base;
+};
 const lab = () => ({ display:'block', margin:'4px 0' });
