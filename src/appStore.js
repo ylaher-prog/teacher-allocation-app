@@ -1,3 +1,4 @@
+// src/appStore.js
 import { create } from 'zustand';
 import sample from './sampleData.js';
 
@@ -65,7 +66,6 @@ export const useAppStore = create((set, get) => {
     // -------- workspace ----------
     setWorkspace(ws){
       WS = (ws || '').trim();
-      // nothing else required; keys will be different from now
     },
 
     // -------- constraints ----------
@@ -78,26 +78,17 @@ export const useAppStore = create((set, get) => {
     },
 
     // -------- CRUD: create/edit ----------
-    addTeacher(t){
-      set(s => ({ teachers: [...s.teachers, {...t, id: t.id || auto('t', s.teachers)}] }));
-    },
-    addSubject(sub){
-      set(s => ({ subjects: [...s.subjects, {...sub, id: sub.id || auto('s', s.subjects)}] }));
-    },
-    addClass(c){
-      set(s => ({ classes: [...s.classes, {...c, id: c.id || auto('c', s.classes)}] }));
-    },
+    addTeacher(t){ set(s => ({ teachers: [...s.teachers, {...t, id: t.id || auto('t', s.teachers)}] })); },
+    addSubject(sub){ set(s => ({ subjects: [...s.subjects, {...sub, id: sub.id || auto('s', s.subjects)}] })); },
+    addClass(c){ set(s => ({ classes: [...s.classes, {...c, id: c.id || auto('c', s.classes)}] })); },
 
     // -------- allocation + periods ----------
     setAllocation(classId, subjectId, teacherId){
-      // hard constraints
       const { constraints } = get();
       if(teacherId){
         const ok = canAssign({ classId, subjectId, teacherId }, get(), constraints);
-        if(!ok.block){ /* pass */ }
-        else { alert(ok.reason); return; }
+        if(ok.block){ alert(ok.reason); return; }
       }
-
       set(s => {
         const next = { ...s.allocation };
         next[classId] = next[classId] ? { ...next[classId] } : {};
@@ -127,6 +118,84 @@ export const useAppStore = create((set, get) => {
         return subj?.periods ?? 0;
       }
       return p;
+    },
+
+    // -------- AUTO ALLOCATE (fill or rebalance) ----------
+    autoAllocate({ overwrite=false } = {}){
+      const s = get();
+      const { constraints } = s;
+
+      // snapshot current loads
+      const { periodLoad, learnerLoad } = computeLoads(s);
+
+      // start from either a blank slate (rebalance) or existing allocation (fill)
+      const baseAlloc = overwrite ? {} : JSON.parse(JSON.stringify(s.allocation || {}));
+      const nextAlloc = JSON.parse(JSON.stringify(baseAlloc));
+
+      // helper lookups
+      const subjById = Object.fromEntries(s.subjects.map(x=>[x.id, x]));
+      const teacherById = Object.fromEntries(s.teachers.map(x=>[x.id, x]));
+
+      // iterate class -> subject
+      for(const c of s.classes){
+        // ensure class node
+        nextAlloc[c.id] = nextAlloc[c.id] || {};
+        for(const subj of s.subjects){
+          const already = nextAlloc[c.id][subj.id];
+          const needAssign = overwrite ? true : !already;
+          if(!needAssign) continue;
+
+          // build candidate set
+          const candidates = s.teachers
+            .map(t => ({ t, ok: !canAssign({ classId:c.id, subjectId:subj.id, teacherId:t.id }, s, constraints).block }))
+            .filter(x => x.ok)
+            .map(({t}) => {
+              // scoring
+              const specialty = subj.requiredSpecialty && t.specialties?.includes(subj.requiredSpecialty) ? 1 : 0;
+              const modeOK = c.mode && t.modes?.includes(c.mode) ? 1 : 0;
+              const pLoad = periodLoad[t.id] ?? 0;
+              const pCap = t.maxPeriods ?? 999999;
+              const normLoad = pCap ? (pLoad / pCap) : 0; // 0..1
+
+              const priority = Number(t.priority || 0);
+              const score = (specialty * 3) + (modeOK * 2) + priority - normLoad; // higher better
+              return { t, specialty, modeOK, score };
+            })
+            .sort((a,b) => b.score - a.score);
+
+          // choose best candidate that still fits caps after adding this subject
+          let chosen = null;
+          for(const cand of candidates){
+            const t = cand.t;
+            const addPeriods = s.getPeriods(c.id, subj.id) || 0;
+
+            const futurePeriods = (periodLoad[t.id] ?? 0) + addPeriods;
+            const futureLearners = (learnerLoad[t.id] ?? 0) + ( (nextAlloc[c.id] && Object.values(nextAlloc[c.id]).includes(t.id)) ? 0 : (c.learners || 0) );
+
+            const overP = (t.maxPeriods != null) && (futurePeriods > t.maxPeriods);
+            const overL = (t.maxLearners != null) && (futureLearners > t.maxLearners);
+
+            if(constraints.enforcePeriodCaps && overP) continue;
+            if(constraints.enforceLearnerCaps && overL) continue;
+
+            chosen = t; // pick first feasible (highest score)
+            // update loads immediately (greedy)
+            periodLoad[t.id] = futurePeriods;
+            learnerLoad[t.id] = futureLearners;
+            break;
+          }
+
+          if(chosen){
+            nextAlloc[c.id][subj.id] = chosen.id;
+          } else {
+            // leave unassigned if no feasible candidate
+            nextAlloc[c.id][subj.id] = '';
+          }
+        }
+      }
+
+      save(KEY_ALLOC, nextAlloc);
+      set({ allocation: nextAlloc });
     },
 
     // scenarios
@@ -167,6 +236,22 @@ export const useAppStore = create((set, get) => {
 // ------ helpers ------
 function auto(prefix, arr){ let n=arr.length+1; let id; do{ id = `${prefix}${n++}`; }while(arr.some(x=>x.id===id)); return id; }
 
+function computeLoads(s){
+  // periods + unique learners per teacher from current allocation
+  const periodLoad = {};
+  const learnerLoad = {};
+  for(const c of s.classes){
+    const a = s.allocation[c.id] || {};
+    const counted = new Set();
+    for(const sid of Object.keys(a)){
+      const tId = a[sid]; if(!tId) continue;
+      periodLoad[tId] = (periodLoad[tId] ?? 0) + (s.getPeriods(c.id, sid) || 0);
+      if(!counted.has(tId)){ learnerLoad[tId] = (learnerLoad[tId] ?? 0) + (c.learners || 0); counted.add(tId); }
+    }
+  }
+  return { periodLoad, learnerLoad };
+}
+
 function canAssign({ classId, subjectId, teacherId }, s, c){
   const cls = s.classes.find(x=>x.id===classId);
   const subj = s.subjects.find(x=>x.id===subjectId);
@@ -180,40 +265,22 @@ function canAssign({ classId, subjectId, teacherId }, s, c){
     return { block:true, reason:`${t.name} is not configured for ${cls.mode}` };
   }
 
-  // caps (soft block unless enforce true)
   if(c.enforceLearnerCaps){
-    const learners = uniqueLearnersForTeacher(teacherId, s);
-    if(t.maxLearners && learners > t.maxLearners){
-      return { block:true, reason:`${t.name} exceeds learner cap (${learners} > ${t.maxLearners})` };
+    const { learnerLoad } = computeLoads(s);
+    const future = (learnerLoad[t.id] ?? 0) + (s.allocation?.[classId] && Object.values(s.allocation[classId]).includes(t.id) ? 0 : (cls.learners || 0));
+    if(t.maxLearners && future > t.maxLearners){
+      return { block:true, reason:`${t.name} exceeds learner cap (${future} > ${t.maxLearners})` };
     }
   }
   if(c.enforcePeriodCaps){
-    const periods = totalPeriodsForTeacher(teacherId, s);
-    const add = s.getPeriods ? s.getPeriods(classId, subjectId) : 0;
-    if(t.maxPeriods && (periods + add) > t.maxPeriods){
+    const { periodLoad } = computeLoads(s);
+    const add = s.getPeriods(classId, subjectId) || 0;
+    const future = (periodLoad[t.id] ?? 0) + add;
+    if(t.maxPeriods && future > t.maxPeriods){
       return { block:true, reason:`${t.name} exceeds period cap` };
     }
   }
   return { block:false };
-}
-
-function uniqueLearnersForTeacher(tId, s){
-  const seen = new Set(); let total = 0;
-  for(const c of s.classes){
-    const a = s.allocation[c.id] || {};
-    if(Object.values(a).includes(tId) && !seen.has(c.id)){ total += c.learners || 0; seen.add(c.id); }
-  }
-  return total;
-}
-function totalPeriodsForTeacher(tId, s){
-  let total = 0;
-  for(const c of s.classes){
-    const a = s.allocation[c.id] || {};
-    for(const sid of Object.keys(a)){
-      if(a[sid]===tId) total += s.getPeriods(c.id, sid) || 0;
-    }
-  }
-  return total;
 }
 
 // -------- realtime stub (optional) ----------
@@ -221,6 +288,5 @@ function getRealtime(){
   const url = import.meta.env.VITE_SUPABASE_URL;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if(!url || !key) return {};
-  // you can initialize Supabase client here and return { emit, subscribe } for allocations/periods
   return {};
 }
